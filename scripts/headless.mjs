@@ -1,9 +1,8 @@
 // Быстрая проверка модели без UI: node scripts/headless.mjs [месяцев]
 import fs from 'node:fs';
-import { buildWorld } from '../src/sim/world.js';
+import { loadWorld } from './load.mjs';
 import { Sim } from '../src/sim/engine.js';
-const raw = JSON.parse(fs.readFileSync(new URL('../public/data/countries.json', import.meta.url)));
-const world = buildWorld(raw);
+const world = loadWorld();
 const sim = new Sim(world, { seed: 1 });
 const months = +process.argv[2] || 120;
 const t0 = Date.now();

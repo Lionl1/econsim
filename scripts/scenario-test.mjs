@@ -1,9 +1,9 @@
 // Сравнение сценариев с базовой линией: node scripts/scenario-test.mjs [id ...]
 import fs from 'node:fs';
-import { buildWorld } from '../src/sim/world.js';
+import { loadWorld } from './load.mjs';
 import { Sim } from '../src/sim/engine.js';
 import { PRESETS } from '../src/sim/scenarios.js';
-const world = buildWorld(JSON.parse(fs.readFileSync(new URL('../public/data/countries.json', import.meta.url))));
+const world = loadWorld();
 const ids = process.argv.slice(2);
 for (const pid of ids.length ? ids : PRESETS.map(p => p.id)) {
   const base = new Sim(world, { seed: 1 }), sim = new Sim(world, { seed: 1 });

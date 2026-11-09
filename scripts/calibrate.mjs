@@ -1,11 +1,11 @@
 // Сравнение моментов модели с историей World Bank 2000-2024.  node scripts/calibrate.mjs [seeds] [--json]
 import fs from 'node:fs';
-import { buildWorld } from '../src/sim/world.js';
+import { loadWorld } from './load.mjs';
 import { Sim, P } from '../src/sim/engine.js';
 const U = f => new URL(f, import.meta.url);
 const raw = JSON.parse(fs.readFileSync(U('../public/data/countries.json')));
 const hist = JSON.parse(fs.readFileSync(U('../data/history.json')));
-const world = buildWorld(raw);
+const world = loadWorld();
 if (process.env.P) Object.assign(P, JSON.parse(process.env.P));
 const SEEDS = +process.argv[2] || 3, YEARS = 24;
 

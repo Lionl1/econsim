@@ -1,9 +1,9 @@
 // Бэктест: известные шоки vs реальность.  node scripts/backtest.mjs
 import fs from 'node:fs';
-import { buildWorld } from '../src/sim/world.js';
+import { loadWorld } from './load.mjs';
 import { Sim } from '../src/sim/engine.js';
 import { PRESETS } from '../src/sim/scenarios.js';
-const world = buildWorld(JSON.parse(fs.readFileSync(new URL('../public/data/countries.json', import.meta.url))));
+const world = loadWorld();
 const SEEDS = 5;
 const cases = [
   { name: 'Пандемия 2020', id: 'pandemic', ref: 'мир: рост 2020 = −3.0% при тренде ≈ +3% → просадка ≈ −5…−6 п.п., уровень ВВП ≈ −5% к тренду; безработица США +4…+5 п.п. (пик)' },

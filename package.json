@@ -12,6 +12,8 @@
     "backtest": "node scripts/backtest.mjs",
     "ensemble": "node scripts/ensemble.mjs",
     "history": "python3 scripts/fetch_history.py",
+    "trade": "python3 scripts/fetch_trade.py",
+    "markets": "python3 scripts/fetch_markets.py",
     "sim": "node scripts/headless.mjs"
   },
   "keywords": [],

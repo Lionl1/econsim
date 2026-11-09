@@ -77,7 +77,7 @@ export function decide(sim, i) {
     }
     if (best >= 0) {
       const d = sim.S[best], amt = s.gdp * 0.0004;
-      d.gdp += amt; s.gdp -= amt * 0.3; d.mods.sent += 0.0;
+      d.gdp += amt; s.gdp -= amt * 0.3;
       sim.aid[i * N + best] += 0.05; d.stab = Math.min(0.99, d.stab + 0.01);
       if (sim.rnd(i, 51, t) < 0.3) sim.log('aid', `🤝 Помощь: ${c.nameRu} → ${W.countries[best].nameRu}`, [i, best], 1);
     }

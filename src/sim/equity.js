@@ -23,7 +23,7 @@ export function initEquity(sim) {
     const c = W.countries[s.i], eq = c.equity || {};
     s.mcapGdp = clamp((eq.mcapGdp ?? 0) / 100, 0, 3);
     s.eqVol = clamp(eq.vol ?? (c.income === 'HIC' ? 0.18 : 0.28), 0.1, 0.6);
-    s.eq = 0; s.eqHist = [0]; s.eq12 = 0; s.rrPrev = s.r - s.infl; s.eqJump = 0; s.fdi = 0;
+    s.eq = 0; s.eqF = 0; s.eqHist = [0]; s.eq12 = 0; s.rrPrev = s.r - s.anchor; s.eqJump = 0; s.fdi = 0;
   }
   sim.corps = (W.companies || []).map((co, k) => {
     const hq = W.idx.get(co.iso);
@@ -35,7 +35,7 @@ export function stepEquity(sim) {
   const W = sim.world, N = W.N, S = sim.S, t = sim.t;
   // общий фактор риска (≈15% годовых для мирового рынка) с редкими «хвостовыми» месяцами
   const tail = gauss(sim.seed, 9995, t, 2) > 2.5 ? -0.06 : 0;
-  sim.riskShock = 0.032 * gauss(sim.seed, 9995, t, 1) + tail;
+  sim.riskShock = 0.037 * gauss(sim.seed, 9995, t, 1) + tail;
   // отрасли
   const dOil = Math.log(sim.oil / (sim.oilPrev || sim.oil)); sim.oilPrev = sim.oil;
   const warShare = S.reduce((a, s) => a + (s.warCount ? s.gdp : 0), 0) / S.reduce((a, s) => a + s.gdp, 0);
@@ -56,11 +56,15 @@ export function stepEquity(sim) {
     const beta = c.income === 'HIC' ? 1 : 1.2;
     // история S&P у World Bank — в долларах: вычитаем колебания курса (их даёт fx.js) и общий фактор
     const fxv = c.currency.regime === 'float' ? (c.currency.fxVol || 0.08) : 0.02;
-    const idio = Math.sqrt(Math.max((0.85 * s.eqVol) ** 2 - fxv ** 2 - (beta * 0.12) ** 2, 0.05 ** 2)) / Math.sqrt(12);
-    const rr = s.r - s.infl, dRR = rr - s.rrPrev; s.rrPrev = rr;
-    const r = (s.gc + clamp(s.infl, -2, 40)) / 1200 + P.eqPremium - 0.002
-      - P.eqDuration * dRR / 100 + beta * sim.riskShock + P.eqNoise * idio * gauss(sim.seed, s.i, t, 130)
-      + 2.5 * s.dLevel / 100 + Math.log(1 + s.eqJump);
+    const idio = Math.sqrt(Math.max((P.eqIdioK * s.eqVol) ** 2 - fxv ** 2 - (beta * 0.12) ** 2, 0.04 ** 2)) / Math.sqrt(12);
+    // реальная ставка по ожидаемой инфляции (якорю): скачок фактической инфляции не должен «поднимать» акции
+    const rr = s.r - s.anchor, dRR = rr - s.rrPrev; s.rrPrev = rr;
+    // фундаментальный путь: номинальный рост прибылей (≈ номинальный ВВП) + премия, с ударами по уровню ВВП
+    const fund = (s.gc + clamp(s.infl, -2, 40)) / 1200 + P.eqPremium - 0.002 + 2.5 * s.dLevel / 100;
+    s.eqF += fund;
+    // оценки возвращаются к фундаменталу (Shiller: отклонения рассасываются за несколько лет)
+    const r = fund - P.eqDuration * dRR / 100 + beta * sim.riskShock + P.eqNoise * idio * gauss(sim.seed, s.i, t, 130)
+      + Math.log(1 + s.eqJump) - P.eqRevert * (s.eq - s.eqF);
     s.eqJump = 0;
     s.eq = clamp(s.eq + clamp(r, -0.6, 0.6), -4, 6);
     s.eqHist.push(s.eq); if (s.eqHist.length > 13) s.eqHist.shift();

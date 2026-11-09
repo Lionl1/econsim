@@ -1,20 +1,20 @@
-// 3D-глобус: текстура собирается из полигонов Natural Earth на canvas, раскраска обновляется по метрике.
+// 3D globe: the texture is painted from Natural Earth polygons on a canvas and recolored by the selected metric.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { feature } from 'topojson-client';
 import { geoEquirectangular, geoPath, geoGraticule10 } from 'd3-geo';
 
-const TW = 4096, TH = 2048;      // цветная текстура
-const IW = 2048, IH = 1024;      // карта идентификаторов для выбора мышью
+const TW = 4096, TH = 2048;      // color texture
+const IW = 2048, IH = 1024;      // id map for mouse picking
 
 export function latLonToVec3(lat, lon, r = 1) {
   const la = lat * Math.PI / 180, lo = lon * Math.PI / 180;
   return new THREE.Vector3(r * Math.cos(la) * Math.cos(lo), r * Math.sin(la), -r * Math.cos(la) * Math.sin(lo));
 }
 
-// Полигоны Natural Earth, у которых нет своей страны в модели: зависимые территории и спорные районы
-// окрашиваются по государству, к которому их относит World Bank. Остальные (Антарктида, Западная Сахара,
-// ледник Сиачен) рисуются штриховкой как не моделируемые.
+// Natural Earth polygons without their own country in the model: dependencies and disputed areas are colored
+// like the state the World Bank assigns them to. The rest (Antarctica, Western Sahara, Siachen Glacier)
+// are hatched as not modeled.
 const TERRITORY = {
   'N. Mariana Is.': 'USA', 'U.S. Virgin Is.': 'USA', 'Guam': 'USA', 'American Samoa': 'USA', 'Puerto Rico': 'USA',
   'S. Geo. and the Is.': 'GBR', 'Br. Indian Ocean Ter.': 'GBR', 'Saint Helena': 'GBR', 'Pitcairn Is.': 'GBR', 'Anguilla': 'GBR',
@@ -42,7 +42,7 @@ export class Globe {
     this.animate();
   }
 
-  // ---------- геометрия ----------
+  // ---------- geometry ----------
   initPaths(topo) {
     const proj = geoEquirectangular().scale(TW / (2 * Math.PI)).translate([TW / 2, TH / 2]);
     const gp = geoPath(proj);
@@ -54,12 +54,12 @@ export class Globe {
       geoPath(proj, p)(f);
       const name = f.properties?.name;
       let idx = f.id != null ? (byNum.get(String(f.id).padStart(3, '0')) ?? -1) : -1;
-      if (idx < 0 && TERRITORY[name]) idx = byIso(TERRITORY[name]);       // зависимые территории -> государство
+      if (idx < 0 && TERRITORY[name]) idx = byIso(TERRITORY[name]);       // dependency -> sovereign state
       return { path: p, idx, unmodeled: idx < 0 };
     });
     this.graticule = new Path2D(); geoPath(proj, this.graticule)(geoGraticule10());
     this.proj = proj;
-    // страны без полигона или очень маленькие — рисуем точками
+    // countries without a polygon or very small ones are drawn as dots
     const hasPoly = new Set(this.polys.map(p => p.idx));
     this.dots = this.world.countries.filter(c => !hasPoly.has(c.i) || c.area < 1500).map(c => {
       const [x, y] = proj([c.cLon, c.cLat]);
@@ -71,7 +71,7 @@ export class Globe {
     const ctx = this.ctx;
     ctx.fillStyle = '#0a1424'; ctx.fillRect(0, 0, TW, TH);
     ctx.strokeStyle = 'rgba(120,160,220,.07)'; ctx.lineWidth = 1.2; ctx.stroke(this.graticule);
-    this.hatch ??= (() => {      // штриховка для территорий вне модели (Антарктида, Западная Сахара, ледник Сиачен)
+    this.hatch ??= (() => {      // hatch pattern for areas outside the model (Antarctica, Western Sahara, Siachen Glacier)
       const cv = document.createElement('canvas'); cv.width = cv.height = 12;
       const x = cv.getContext('2d'); x.fillStyle = '#1c2433'; x.fillRect(0, 0, 12, 12);
       x.strokeStyle = '#2c374b'; x.lineWidth = 2; x.beginPath(); x.moveTo(0, 12); x.lineTo(12, 0); x.stroke();
@@ -112,7 +112,7 @@ export class Globe {
     return id >= 0 && id < this.N ? id : -1;
   }
 
-  // ---------- сцена ----------
+  // ---------- scene ----------
   initScene() {
     const el = this.container;
     const w = el.clientWidth, h = el.clientHeight;
@@ -132,14 +132,14 @@ export class Globe {
     this.earth = new THREE.Mesh(new THREE.SphereGeometry(1, 128, 96), new THREE.MeshBasicMaterial({ map: this.tex }));
     scene.add(this.earth);
 
-    // подсветка наведённой/выбранной страны
+    // highlight for the hovered/selected country
     const hv = this.hcanvas = document.createElement('canvas'); hv.width = 2048; hv.height = 1024;
     this.hctx = hv.getContext('2d');
     this.htex = new THREE.CanvasTexture(hv); this.htex.colorSpace = THREE.SRGBColorSpace;
     this.hmesh = new THREE.Mesh(new THREE.SphereGeometry(1.002, 96, 64), new THREE.MeshBasicMaterial({ map: this.htex, transparent: true, depthWrite: false }));
     scene.add(this.hmesh);
 
-    // атмосфера
+    // atmosphere
     const atm = new THREE.Mesh(new THREE.SphereGeometry(1.14, 64, 48), new THREE.ShaderMaterial({
       transparent: true, side: THREE.BackSide, depthWrite: false, blending: THREE.AdditiveBlending,
       vertexShader: 'varying vec3 vN; void main(){ vN = normalize(normalMatrix*normal); gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.); }',
@@ -153,7 +153,7 @@ export class Globe {
     }));
     scene.add(rim);
 
-    // звёзды
+    // stars
     const sg = new THREE.BufferGeometry(), pos = [];
     for (let i = 0; i < 1800; i++) { const v = new THREE.Vector3().randomDirection().multiplyScalar(40 + Math.random() * 20); pos.push(v.x, v.y, v.z); }
     sg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
@@ -229,7 +229,7 @@ export class Globe {
     this.controls.autoRotate = false;
   }
 
-  // ---------- дуги и маркеры ----------
+  // ---------- arcs and markers ----------
   arcCurve(i, j, lift) {
     const a = latLonToVec3(this.world.countries[i].cLat, this.world.countries[i].cLon).normalize();
     const b = latLonToVec3(this.world.countries[j].cLat, this.world.countries[j].cLon).normalize();

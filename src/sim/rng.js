@@ -1,6 +1,6 @@
-// Счётчиковый ГСЧ: одинаковые (seed, страна, тик, слот) -> одинаковое число.
-// Благодаря этому основной и «базовый» прогоны получают одни и те же случайные шоки,
-// и разница между ними отражает только сценарий.
+// Counter-based RNG: the same (seed, country, tick, slot) always gives the same number.
+// So the main and baseline runs get identical random shocks,
+// and the difference between them reflects only the scenario.
 export function hash(a, b, c, d) {
   let h = 2166136261 ^ a;
   h = Math.imul(h ^ b, 16777619);

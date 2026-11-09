@@ -1,10 +1,10 @@
-// Разбор свободного текста («Россия вторгается в Украину», «землетрясение в Японии, −8% ВВП на полгода»)
-// в набор эффектов сценария. Правила и словари, без внешних моделей.
+// Parses free Russian text ("Россия вторгается в Украину", "землетрясение в Японии, −8% ВВП на полгода")
+// into scenario effects. Rules and dictionaries, no external models.
 const norm = s => s.toLowerCase().replace(/ё/g, 'е');
 const GULF = ['iso:IRN', 'iso:SAU', 'iso:ARE', 'iso:KWT', 'iso:QAT', 'iso:BHR', 'iso:OMN', 'iso:IRQ'];
 const WEST_SANCTIONERS = ['bloc:NATO', 'bloc:EU', 'iso:JPN', 'iso:AUS', 'iso:KOR', 'iso:CHE', 'iso:NZL'];
 
-// алиасы: префикс слова -> селекторы
+// aliases: word prefix -> selectors
 const ALIASES = [
   ['сша', ['iso:USA']], ['америк', ['iso:USA']], ['штат', ['iso:USA']], ['вашингтон', ['iso:USA']],
   ['великобритан', ['iso:GBR']], ['британ', ['iso:GBR']], ['англи', ['iso:GBR']],
@@ -20,16 +20,16 @@ const ALIASES = [
   ['богат', ['income:HIC']], ['бедн', ['income:LIC']], ['развив', ['income:LMC', 'income:LIC']],
 ];
 
-// слово названия -> {word, base}: base без окончания, к нему допускаются падежные окончания из ENDINGS
+// name word -> {word, base}: base has no ending; case endings from ENDINGS may follow it
 const STRIP = /(ая|ое|ые|ий|ый|ой|ия|ея|я|а|ь|й|о|и|ы|е)$/;
 const ENDINGS = new Set(['', 'а', 'ы', 'е', 'у', 'и', 'ю', 'я', 'й', 'ой', 'ою', 'ей', 'ем', 'ом', 'ии', 'ию', 'ия', 'ией', 'ая', 'ую', 'ые', 'ых', 'ым', 'ыми', 'ого', 'ому', 'ий', 'ый', 'ое', 'ие', 'их', 'им', 'ами', 'ах', 'ам', 'ея', 'еи', 'ее', 'ею', 'еей']);
 const wordMatch = (tok, p) => tok === p.word || (p.base.length >= 3 && tok.startsWith(p.base) && ENDINGS.has(tok.slice(p.base.length)));
-// русские написания компаний (латиница тоже распознаётся)
+// Russian spellings of company names (Latin spellings are recognized too)
 const COMPANY_RU = { 'Apple': 'эппл', 'Nvidia': 'нвиди', 'Microsoft': 'майкрософт', 'Alphabet': 'гугл', 'Amazon': 'амазон', 'Tesla': 'тесл',
   'Meta Platforms': 'мета', 'Samsung Electronics': 'самсунг', 'Toyota': 'тойот', 'Sberbank': 'сбер', 'Gazprom': 'газпром', 'Saudi Aramco': 'арамко',
   'Alibaba Group': 'алибаб', 'Tencent': 'тенсент', 'Boeing': 'боинг', 'Airbus': 'эрбас', 'Volkswagen': 'фольксваген', 'BYD': 'byd', 'TSMC': 'tsmc' };
 
-// алиасы из нескольких слов (префиксы подряд идущих слов)
+// multi-word aliases (prefixes of consecutive words)
 const PHRASES = [
   [['все', 'стран'], ['all']], [['всех', 'стран'], ['all']], [['весь', 'мир'], ['all']], [['всего', 'мир'], ['all']],
   [['мировое', 'сообществ'], ['all']], [['оон'], ['all']], [['человечеств'], ['all']], [['планет'], ['all']], [['земл'], ['all'], true],
@@ -43,14 +43,14 @@ function countryIndex(world) {
   }).sort((a, b) => b.parts.length - a.parts.length || b.len - a.len);
 }
 
-// обычные слова, совпадающие с названиями стран: страной считаются только с заглавной буквы
+// common words that match country names: treated as a country only when capitalized
 const STOP = new Set(['того']);
-// (?<![а-я]) — начало слова: \b в JS не работает с кириллицей
+// (?<![а-я]) marks a word start: \b does not work with Cyrillic in JS
 
 const KW = /(?<![а-я])(война|вторжен|вторга|напад|атак|удар|воюет|обстрел|захват|санкци|эмбарго|изоляц|пошлин|тариф|торгов[а-я]* войн|нефт|землетряс|цунами|ураган|наводнен|стихийн|извержен|засух|неурожай|голод|пандеми|эпидеми|вирус|карантин|кризис|рецесси|крах|банкротств|пузыр|дефолт|переворот|революци|мятеж|восстани|беспорядк|протест|теракт|кибератак|взлом|забастовк|инфляц|безработиц|военн[а-я]* (расход|бюджет)|вооруж|милитариз|бум(?![а-я])|подъем|прорыв|технологическ|стимул|реформ|помощ|грант|союз|сближен|объедин|девальв|биткоин|крипт|акци|бирж|доллар|рубл|юан|перенос|сотруднич|разоруж|примирен|перемири|дружб|договор|альянс|ссор|конфликт|напряжен|разрыв|эскалац)/;
 
 export function parseEvent(textRaw, world, lab = null) {
-  // несколько событий в одной фразе: делим по запятым/«и»/«;», склеивая куски без ключевых слов с предыдущим
+  // several events in one phrase: split on commas / "и" / ";", gluing pieces without keywords to the previous one
   const segs = textRaw.split(/\s*(?:[,;]|(?<![а-я])и(?=\s)|а также|при этом|потом|затем)\s*/i).filter(s => s.trim());
   const units = [];
   for (const sg of segs) {
@@ -58,7 +58,7 @@ export function parseEvent(textRaw, world, lab = null) {
     if (units.length && KW.test(s) && KW.test(norm(units[units.length - 1]))) units.push(sg);
     else if (units.length) units[units.length - 1] += ' и ' + sg; else units.push(sg);
   }
-  // каждое событие — отдельный сценарий со своими сроком и задержкой
+  // each event is its own scenario with its own duration and delay
   const parts = (units.length <= 1 ? [textRaw] : units).map(u => parseOne(u, world, lab)), okp = parts.filter(p => p.ok);
   if (!okp.length) return { ok: false, notes: parts.flatMap(p => p.notes), parts: [] };
   return { ok: true, parts: okp, notes: parts.filter(p => !p.ok).flatMap(p => p.notes.slice(0, -1)) };
@@ -68,14 +68,14 @@ function parseOne(textRaw, world, lab = null) {
   const text = norm(textRaw);
   const toks = [...text.matchAll(/[a-zа-я0-9]+/g)].map(m => ({ w: m[0], pos: m.index, used: false }));
   const notes = [];
-  // ---- сущности ----
+  // ---- entities ----
   const ents = [];
   const idx = world._nlpIdx ??= countryIndex(world);
   const take = (k, n, sel, label) => { for (let q = 0; q < n; q++) toks[k + q].used = true; ents.push({ pos: toks[k].pos, sel, label }); };
   for (let k = 0; k < toks.length; k++) {
     if (toks[k].used) continue;
     let hit = false;
-    for (const c of idx) {          // страны (сначала многословные)
+    for (const c of idx) {          // countries (multi-word names first)
       if (c.parts.length > 1 && c.parts.every((p, q) => toks[k + q] && !toks[k + q].used && wordMatch(toks[k + q].w, p))) { take(k, c.parts.length, ['iso:' + c.iso], c.iso); hit = true; break; }
     }
     if (hit) continue;
@@ -99,7 +99,7 @@ function parseOne(textRaw, world, lab = null) {
   else { A = sorted[0]; B = sorted[1]; }
   const one = sorted[0];
 
-  // ---- числа и интенсивность ----
+  // ---- numbers and intensity ----
   const pctM = text.match(/([+\-−]?\s?\d+(?:[.,]\d+)?)\s*(%|процент|п\.п)/);
   const pct = pctM ? Math.abs(parseFloat(pctM[1].replace(',', '.').replace(/\s/g, ''))) : null;
   let duration = null, delay = 0;
@@ -112,11 +112,11 @@ function parseOne(textRaw, world, lab = null) {
   const strong = /(сильн|мощн|катастроф|масштабн|разрушительн|тяжел|глубок)/.test(text) ? 1.6 : /(небольш|слаб|легк|незначит|умерен)/.test(text) ? 0.5 : 1;
   const sh = (targets, v, value, extra = {}) => ({ kind: 'shock', targets, var: v, value: +(value).toFixed(2), ...extra });
   const effects = []; let dur = 0; let title = null; const recognized = [];
-  const evText = text.replace(/(?<![а-я])(с|при) помощ[а-я]*/g, m => ' '.repeat(m.length));   // «с помощью» — не событие
+  const evText = text.replace(/(?<![а-я])(с|при) помощ[а-я]*/g, m => ' '.repeat(m.length));   // "с помощью" ("with the help of") is not an event
   const has = re => re.test(evText);
   const targetOf = e => e ? e.sel : ['all'];
 
-  // ---- события ----
+  // ---- events ----
   const R = (name, fn) => { recognized.push(name); fn(); };
   if (has(/нефт/)) R('цена нефти', () => {
     const down = has(/(?<![а-я])(пад|упад|обвал|дешев|снизи|удешев|подешев|рухн|сниж|слом)/) && !has(/сокращ.*добыч/);
@@ -125,7 +125,7 @@ function parseOne(textRaw, world, lab = null) {
   });
   const WAR = /(?<![а-я])(война|войну|войной|вторжен|вторга|напад|атак|удар|воюет|воевать|обстрел|захват)/;
   if (has(WAR) && !has(/торгов[а-я]* войн|гражданск[а-я]* войн|(прекращ|конец|конча|окончан|заверш|без|останов)[а-я]* войн/)) R('война', () => {
-    // кто до глагола — нападающие, кто после — цель («Россия с помощью Ирана нападает на Украину»)
+    // entities before the verb are attackers, after it the target ("Россия с помощью Ирана нападает на Украину")
     const kw = evText.search(WAR), before = sorted.filter(e => e.pos < kw), after = sorted.filter(e => e.pos > kw);
     const [wa, wb] = proPos < 0 && before.length && after.length ? [group(before), group(after)] : [A, B];
     if (wa && wb && wa !== wb) { effects.push({ kind: 'war', a: wa.sel, b: wb.sel }); dur = duration ?? 0; title = 'Война'; }
@@ -146,23 +146,27 @@ function parseOne(textRaw, world, lab = null) {
     if (has(/торговая война|торговой войн|торговую войну|ответ|взаимн/) && B2 && A2) effects.push({ kind: 'tariff', from: B2.sel, to: A2.sel, value: Math.round(val) });
     dur = dur || 36; title = 'Пошлины';
   });
-  // ---- рынки: валюты, крипта, акции, отрасли, компании ----
+  // ---- markets: currencies, crypto, stocks, sectors, companies ----
   const UP = /(?<![а-я])(вырос|выраст|растет|растёт|рост|взлет|взлёт|подорож|укрепл|укреп|ралли|в (два|три|пять|десять|\d+) раз)/;
   const DOWN = /(?<![а-я])(упал|упад|пада|рух|обвал|крах|обесцен|девальв|подешев|дешеве|ослаб|сниж|снизи|лопн|паден)/;
   const dirMkt = has(DOWN) ? -1 : has(UP) ? 1 : -1;
   const times = (() => { const m = evText.match(/в (два|три|пять|десять|\d+) раз/); if (!m) return null; return ({ 'два': 2, 'три': 3, 'пять': 5, 'десять': 10 })[m[1]] ?? +m[1]; })();
   let market = false;
-  const CURRENCIES = [['рубл', 'iso:RUS'], ['юан', 'iso:CHN'], ['лир', 'iso:TUR'], ['иен', 'iso:JPN'], ['йен', 'iso:JPN'], ['рупи', 'iso:IND'], ['реал', 'iso:BRA'],
-    ['песо', 'iso:ARG'], ['фунт', 'iso:GBR'], ['гривн', 'iso:UKR'], ['тенге', 'iso:KAZ'], ['рэнд', 'iso:ZAF'], ['найр', 'iso:NGA'], ['риал', 'iso:IRN'],
-    ['шекел', 'iso:ISR'], ['злот', 'iso:POL'], ['франк', 'iso:CHE'], ['евро', 'bloc:EU'], ['вон', 'iso:KOR'], ['лари', 'iso:GEO'], ['драм', 'iso:ARM'], ['сом', 'iso:KGZ']];
-  const curTok = toks.find(tk => CURRENCIES.some(([p]) => tk.w.startsWith(p) && !(p === 'вон' && tk.w !== 'вона' && tk.w !== 'воны')));
-  if (has(/(?<![а-я])доллар/) && !curTok && !has(/(?<![а-я])(биткоин|крипт)/)) R('курс доллара', () => {
-    // доллар крепнет = валюты остального мира слабеют
+  // currency names as whole words with case endings (prefixes would catch «Евросоюз», «реальный», «Сомали»)
+  const CURRENCIES = [[/^рубл(ь|я|ю|ем|е|и|ей|ям|ями|ях)$/, 'iso:RUS'], [/^юан(ь|я|ю|ем|е|и|ей)$/, 'iso:CHN'], [/^лир(а|ы|е|у|ой)$/, 'iso:TUR'],
+    [/^[ий]ен(а|ы|е|у|ой)$/, 'iso:JPN'], [/^рупи(я|и|ю|ей)$/, 'iso:IND'], [/^реал(а|у|ом|е|ы|ов)?$/, 'iso:BRA'], [/^песо$/, 'iso:ARG'],
+    [/^фунт(а|у|ом|е|ы|ов)?$/, 'iso:GBR'], [/^гривн(а|ы|е|у|ой)$/, 'iso:UKR'], [/^тенге$/, 'iso:KAZ'], [/^рэнд(а|у|ом|е|ы|ов)?$/, 'iso:ZAF'],
+    [/^найр(а|ы|е|у|ой)$/, 'iso:NGA'], [/^риал(а|у|ом|е|ы|ов)?$/, 'iso:IRN'], [/^шекел(ь|я|ю|ем|е|и|ей)$/, 'iso:ISR'], [/^злот(ый|ого|ому|ым|ом|ые|ых)$/, 'iso:POL'],
+    [/^франк(а|у|ом|е|и|ов)?$/, 'iso:CHE'], [/^евро$/, 'bloc:EU'], [/^вон(а|ы|е|у|ой)$/, 'iso:KOR'], [/^лари$/, 'iso:GEO'], [/^драм(а|у|ом|е|ы|ов)?$/, 'iso:ARM'],
+    [/^сом(а|у|ом|е|ы|ов)?$/, 'iso:KGZ']];
+  const curHit = (() => { for (const tk of toks) for (const [re, sel] of CURRENCIES) if (re.test(tk.w)) return sel; return null; })();
+  if (has(/(?<![а-я])доллар/) && !curHit && !has(/(?<![а-я])(биткоин|крипт)/)) R('курс доллара', () => {
+    // a stronger dollar = weaker currencies everywhere else
     const v = (pct ?? 15) * strong * (has(UP) && !has(/(?<![а-я])(ослаб|паден|упал|обвал)/) ? 1 : -1);
     effects.push(sh(sorted.length ? [...new Set(sorted.flatMap(e => e.sel))] : ['all'], 'fx', v)); market = true; dur = dur || 24; title ??= v > 0 ? 'Сильный доллар' : 'Слабый доллар';
   });
-  if (curTok || has(/(?<![а-я])(девальвац|валютн[а-я]* кризис|обвал[а-я]* курс|курс[а-я]* (обвал|рух|пад))/)) R('валюта', () => {
-    const tgt = sorted.length ? [...new Set(sorted.flatMap(e => e.sel))] : curTok ? [CURRENCIES.find(([p]) => curTok.w.startsWith(p))[1]] : ['all'];
+  if (curHit || has(/(?<![а-я])(девальвац|валютн[а-я]* кризис|обвал[а-я]* курс|курс[а-я]* (обвал|рух|пад))/)) R('валюта', () => {
+    const tgt = sorted.length ? [...new Set(sorted.flatMap(e => e.sel))] : curHit ? [curHit] : ['all'];
     const v = (pct ?? 25) * strong * (has(/(?<![а-я])(укреп|подорож|вырос)/) && !has(/(?<![а-я])(девальв|обвал|упал|ослаб)/) ? -1 : 1);
     effects.push(sh(tgt, 'fx', v)); market = true;
     if (has(/кризис|обвал|рух/)) effects.push(sh(tgt, 'equity', -20 * strong), sh(tgt, 'growth', -2 * strong));
@@ -235,7 +239,7 @@ function parseOne(textRaw, world, lab = null) {
   const peaceHere = has(PEACE) || (/(?<![а-я])мир(?![а-я])/.test(evText) && !sorted.some(e => e.label !== 'мир') && !has(WAR));
   if (peaceHere) R('мир и сотрудничество', () => {
     const grp = sorted.length ? { sel: [...new Set(sorted.flatMap(e => e.sel))] } : { sel: ['all'] };
-    const g = grp.sel.length === 1 && grp.sel[0].startsWith('iso:') && !(A && B) ? { sel: ['all'] } : grp;   // одна страна «объединилась» — со всеми
+    const g = grp.sel.length === 1 && grp.sel[0].startsWith('iso:') && !(A && B) ? { sel: ['all'] } : grp;   // a single country "uniting" means uniting with everyone
     effects.push({ kind: 'peace', a: g.sel }, sh(g.sel, 'growth', gro(1)), sh(g.sel, 'stab', 0.06 * strong), sh(g.sel, 'sent', 0.08 * strong));
     if (has(/разоруж|сократ[а-я]* (арми|вооруж|военн)/)) effects.push(sh(g.sel, 'mil', -1));
     dur = dur || 60; title ??= g.sel.includes('all') ? 'Глобальный мир и сотрудничество' : 'Мирное соглашение';
@@ -249,6 +253,6 @@ function parseOne(textRaw, world, lab = null) {
 
   if (!effects.length) return { ok: false, notes: [...notes, 'Не смогла распознать событие. Упомяните страны/блоки и тип события: война, санкции, пошлины, нефть, землетрясение, кризис, пандемия, переворот, бум, помощь, сближение…'], entities: labels };
   const finalDur = duration ?? dur;
-  // нефть/шок на «всех», если сущностей нет, — уже учтено (T1 = all)
+  // oil / shocks with no entities apply to everyone (T1 = all)
   return { ok: true, title: (title || 'Событие') + (labels.length ? ': ' + labels.slice(0, 3).join(', ') : ''), duration: finalDur, delay, effects, notes, recognized, entities: labels };
 }

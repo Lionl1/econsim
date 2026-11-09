@@ -1,4 +1,4 @@
-// Блоки, союзы, ядерные державы и соперничества (по данным Wikipedia; упрощённо).
+// Blocs, alliances, nuclear powers and rivalries (from Wikipedia; simplified).
 export const BLOCS = {
   NATO: 'ALB BEL BGR CAN HRV CZE DNK EST FIN FRA DEU GRC HUN ISL ITA LVA LTU LUX MNE NLD MKD NOR POL PRT ROU SVK SVN ESP SWE TUR GBR USA'.split(' '),
   EU: 'AUT BEL BGR HRV CYP CZE DNK EST FIN FRA DEU GRC HUN IRL ITA LVA LTU LUX MLT NLD POL PRT ROU SVK SVN ESP SWE'.split(' '),
@@ -11,15 +11,15 @@ export const BLOCS = {
   CSTO: 'RUS BLR ARM KAZ KGZ TJK'.split(' '),
 };
 export const BLOC_NAMES = { NATO: 'НАТО', EU: 'ЕС', BRICS: 'БРИКС', ASEAN: 'АСЕАН', SCO: 'ШОС', OPEC: 'ОПЕК+', G7: 'G7', G20: 'G20', CSTO: 'ОДКБ' };
-// блоки с обязательствами взаимной обороны
+// blocs with mutual defense obligations
 export const DEFENSE_BLOCS = ['NATO', 'CSTO'];
 export const NUCLEAR = new Set('USA RUS CHN FRA GBR IND PAK ISR PRK'.split(' '));
-// двусторонние союзы: [a, b]
+// bilateral alliances: [a, b]
 export const ALLIES = [
   ['USA', 'JPN'], ['USA', 'KOR'], ['USA', 'PHL'], ['USA', 'AUS'], ['USA', 'ISR'], ['USA', 'SAU'],
   ['RUS', 'BLR'], ['CHN', 'PRK'], ['CHN', 'PAK'], ['RUS', 'IRN'], ['RUS', 'SYR'], ['GBR', 'AUS'], ['FRA', 'MAR'],
 ];
-// соперничества: [a, b, базовые отношения]
+// rivalries: [a, b, baseline relation]
 export const RIVALRIES = [
   ['USA', 'RUS', -0.5], ['USA', 'CHN', -0.35], ['USA', 'IRN', -0.8], ['USA', 'PRK', -0.9], ['RUS', 'UKR', -0.9],
   ['IND', 'PAK', -0.75], ['ISR', 'IRN', -0.9], ['CHN', 'TWN', -0.75], ['CHN', 'IND', -0.4], ['KOR', 'PRK', -0.85],
@@ -30,5 +30,5 @@ export const RIVALRIES = [
   ['EGY', 'ETH', -0.35], ['AFG', 'PAK', -0.45], ['VEN', 'GUY', -0.45], ['KOR', 'JPN', -0.15], ['IND', 'BGD', -0.1],
   ['RUS', 'GBR', -0.5], ['RUS', 'DEU', -0.35], ['RUS', 'FRA', -0.35], ['RUS', 'USA', -0.5], ['TUR', 'CYP', -0.3],
 ];
-// противостояние НАТО и «восточного блока»
+// NATO vs the "eastern bloc"
 export const NATO_ADVERSARIES = ['RUS', 'BLR', 'IRN', 'PRK'];

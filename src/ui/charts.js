@@ -1,4 +1,4 @@
-// Мини-графики на canvas.
+// Small canvas charts.
 export function lineChart(canvas, series, { height = 90, zeroLine = false, fmt = v => v.toFixed(1) } = {}) {
   const dpr = window.devicePixelRatio || 1;
   const w = canvas.clientWidth || 260, h = height;
@@ -18,7 +18,7 @@ export function lineChart(canvas, series, { height = 90, zeroLine = false, fmt =
   ctx.strokeStyle = 'rgba(255,255,255,.08)'; ctx.lineWidth = 1;
   for (let k = 0; k <= 2; k++) { const y = T + (h - T - B) * k / 2; ctx.beginPath(); ctx.moveTo(L, y); ctx.lineTo(w - R, y); ctx.stroke(); }
   if (zeroLine && min < 0 && max > 0) { ctx.strokeStyle = 'rgba(255,255,255,.3)'; ctx.beginPath(); ctx.moveTo(L, Y(0)); ctx.lineTo(w - R, Y(0)); ctx.stroke(); }
-  // коридор (s.lo/s.hi) рисуется полупрозрачной заливкой под линией
+  // band (s.lo/s.hi) is drawn as a translucent fill under the line
   for (const s of series) if (s.lo && s.hi) {
     const n = s.lo.length;
     ctx.fillStyle = s.bandColor || s.color; ctx.globalAlpha = 0.22; ctx.beginPath();

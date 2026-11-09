@@ -1,4 +1,4 @@
-// Бэктест: известные шоки vs реальность.  node scripts/backtest.mjs
+// Backtest: known shocks vs history.  node scripts/backtest.mjs
 import fs from 'node:fs';
 import { loadWorld } from './load.mjs';
 import { Sim } from '../src/sim/engine.js';
@@ -6,9 +6,9 @@ import { PRESETS } from '../src/sim/scenarios.js';
 const world = loadWorld();
 const SEEDS = 5;
 const cases = [
-  { name: 'Пандемия 2020', id: 'pandemic', ref: 'мир: рост 2020 = −3.0% при тренде ≈ +3% → просадка ≈ −5…−6 п.п., уровень ВВП ≈ −5% к тренду; безработица США +4…+5 п.п. (пик)' },
-  { name: 'Финкризис 2008–09', id: 'us-crisis', ref: 'мир: рост 2009 = −1.4% при тренде ≈ +3.5% → просадка ≈ −5 п.п., уровень ≈ −4…−5%; безработица США +5 п.п.' },
-  { name: 'Нефть +40%, 12 мес. (2022)', custom: { title: 'oil40', duration: 12, effects: [{ kind: 'oil', value: 0.4 }] }, ref: 'мир: CPI 2021 4.7% → 2022 ≈ 8.7% (+4 п.п. с учётом других факторов; доля нефти ~1/3)' },
+  { name: 'Pandemic 2020', id: 'pandemic', ref: 'world growth 2020 = -3.0% vs trend ~+3% -> gap ~-5...-6 pp, GDP level ~-5% vs trend; US unemployment +4...+5 pp (peak)' },
+  { name: 'Financial crisis 2008-09', id: 'us-crisis', ref: 'world growth 2009 = -1.4% vs trend ~+3.5% -> gap ~-5 pp, level ~-4...-5%; US unemployment +5 pp' },
+  { name: 'Oil +40%, 12 months (2022)', custom: { title: 'oil40', duration: 12, effects: [{ kind: 'oil', value: 0.4 }] }, ref: 'world CPI 2021 4.7% -> 2022 ~8.7% (+4 pp including other drivers; oil ~1/3 of it)' },
 ];
 const mean = a => a.reduce((x, y) => x + y, 0) / a.length;
 for (const c of cases) {
@@ -28,5 +28,5 @@ for (const c of cases) {
     }
     res.dG.push(mean(bg)); res.dLevel.push(minL); res.dU.push(maxU); res.dInfl.push(maxI);
   }
-  console.log(`\n${c.name}\n  реальность: ${c.ref}\n  модель (ср. по ${SEEDS} сидам): рост мира в первый год Δ ${mean(res.dG).toFixed(1)} п.п. | минимум уровня ВВП ${mean(res.dLevel).toFixed(1)}% | пик ΔБезраб. США +${mean(res.dU).toFixed(1)} п.п. | пик ΔИнфл. мира +${mean(res.dInfl).toFixed(1)} п.п.`);
+  console.log(`\n${c.name}\n  history: ${c.ref}\n  model (mean of ${SEEDS} seeds): world growth in year one ${mean(res.dG).toFixed(1)} pp | GDP level trough ${mean(res.dLevel).toFixed(1)}% | US unemployment peak +${mean(res.dU).toFixed(1)} pp | world inflation peak +${mean(res.dInfl).toFixed(1)} pp`);
 }

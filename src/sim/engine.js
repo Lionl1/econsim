@@ -1,4 +1,5 @@
-// Ядро симуляции: ежемесячный шаг. Макроэкономика стран + агенты-граждане + агенты-правительства + войны/санкции/тарифы.
+// Simulation core: monthly step. Country macro + citizen agents + government agents + wars/sanctions/tariffs
+// + trade, exchange rates, stock markets, crypto and corporations (separate modules).
 import { hash, gauss } from './rng.js';
 import { resolve } from './world.js';
 import { DEFENSE_BLOCS, BLOCS } from './blocs.js';
@@ -15,8 +16,8 @@ import { P } from './params.js';
 export { P };
 
 export class Sim {
-  constructor(world, { seed = 1, baseline = false } = {}) {
-    this.world = world; this.seed = seed; this.baseline = baseline;
+  constructor(world, { seed = 1 } = {}) {
+    this.world = world; this.seed = seed;
     this.reset();
   }
 
@@ -25,14 +26,14 @@ export class Sim {
     this.t = 0;
     this.startYear = 2026;
     this.oil = 1; this.cyc = 0; this.oilShock = 0;
-    this.T = new Float32Array(N * N);          // тарифы: T[i*N+j] — надбавка, которую i вводит на товары j (%)
-    this.San = new Uint8Array(N * N);          // санкции: San[i*N+j] = 1 — i ввёл санкции против j
-    this.warMat = new Uint8Array(N * N);       // 1 — страны воюют друг против друга
-    this.R = Float32Array.from(W.base);        // динамические отношения
-    this.aid = new Float32Array(N * N);        // «память» о помощи, затухает
+    this.T = new Float32Array(N * N);          // tariffs: T[i*N+j], the extra duty i charges on goods from j (%)
+    this.San = new Uint8Array(N * N);          // sanctions: San[i*N+j] = 1 when i sanctions j
+    this.warMat = new Uint8Array(N * N);       // 1 when the countries are at war with each other
+    this.R = Float32Array.from(W.base);        // dynamic relations
+    this.aid = new Float32Array(N * N);        // decaying "memory" of aid
     this.wars = []; this.truce = new Map(); this.peace = [];
-    this.agentWars = 0;                        // войн, объявленных агентами (не сценариями)
-    // пошлины/санкции, заданные сценариями: k -> { base, claims: Map(scId -> значение) }; пока есть claims, агенты их не трогают
+    this.agentWars = 0;                        // wars declared by agents (not scenarios)
+    // tariffs/sanctions set by scenarios: k -> { base, claims: Map(scId -> value) }; agents leave them alone while claims exist
     this.lockedSan = new Map(); this.lockedT = new Map();
     this.events = []; this.eventSeq = 0;
     this.scenarios = []; this.scSeq = 0;
@@ -70,7 +71,7 @@ export class Sim {
       hawk, coop: clamp(0.55 + 0.25 * c.dem - 0.35 * hawk + 0.15 * (hash(this.seed, i, 7777, 2) - 0.5), 0.05, 0.98),
       protect: clamp(0.3 + 0.3 * (1 - Math.min(1, c.openness)) + 0.3 * (hash(this.seed, i, 7777, 3) - 0.5), 0.02, 0.98),
       dem: c.dem, popGrowth: c.popGrowth,
-      warCount: 0, sanctionPressure: 0, defaulted: 0, migNet: 0, lastDecide: 0, lastGovChange: 0,
+      warCount: 0, sanctionPressure: 0, defaulted: 0, migNet: 0, lastGovChange: 0,
       nextElection: Math.floor(12 + 48 * hash(this.seed, i, 7777, 4)),
       protestFlag: false,
       mods: this.blankMods(),
@@ -82,14 +83,14 @@ export class Sim {
 
   blankMods() { return { g: 0, infl: 0, unemp: 0, stab: 0, sent: 0, mil: 0, f: 0, fx: 0 }; }
 
-  // ---------- журнал ----------
+  // ---------- event log ----------
   log(kind, text, ids = [], sev = 1) {
     this.events.push({ id: ++this.eventSeq, t: this.t, kind, text, ids, sev });
     if (this.events.length > 600) this.events.splice(0, 100);
   }
   nm(i) { return this.world.countries[i].nameRu; }
 
-  // ---------- сценарии ----------
+  // ---------- scenarios ----------
   addScenario(def) {
     const sc = { id: ++this.scSeq, title: def.title || 'Сценарий', desc: def.desc || '', start: def.start ?? this.t, duration: def.duration ?? 12,
       effects: def.effects.map(e => ({ ...e })), started: false, ended: false, saved: [] };
@@ -137,7 +138,7 @@ export class Sim {
           this.R[a * N + b] = this.R[b * N + a] = clamp(this.R[a * N + b] + e.value, -1, 1);
         }
       } else if (e.kind === 'crypto') {
-        this.btcJump = (1 + this.btcJump) * (1 + e.value) - 1;          // разовый скачок цены биткоина
+        this.btcJump = (1 + this.btcJump) * (1 + e.value) - 1;          // one-off bitcoin price jump
         this.log('crypto', `₿ Биткоин ${e.value > 0 ? '+' : ''}${Math.round(e.value * 100)}%`, [], 3);
       } else if (e.kind === 'company' || e.kind === 'relocate') {
         const co = this.corps.find(x => x.name === e.name);
@@ -154,8 +155,8 @@ export class Sim {
       } else if (e.kind === 'sector') {
         this.sectorJump[e.sector] = (1 + (this.sectorJump[e.sector] || 0)) * (1 + e.value / 100) - 1;
       } else if (e.kind === 'peace') {
-        // мирное соглашение внутри группы: войны между участниками заканчиваются, взаимные санкции и пошлины
-        // (не заданные другими сценариями) снимаются; пока сценарий идёт, участники не воюют друг с другом
+        // peace deal within a group: wars between members end, mutual sanctions and tariffs
+        // (not set by other scenarios) are lifted; members do not fight each other while it lasts
         const set = new Set(this.targets(e, 'a'));
         for (const w of [...this.wars]) if (w.a.some(i => set.has(i)) && w.b.some(i => set.has(i))) this.endWar(w, 'мирное соглашение');
         for (const a of set) for (const b of set) {
@@ -177,8 +178,8 @@ export class Sim {
     this.release(this.lockedSan, this.San, sc.id);
     this.log('scenario', `■ Сценарий завершён: ${sc.title}`, [], 2);
   }
-  // несколько сценариев могут задавать одну и ту же пошлину/санкцию: действует максимум из активных,
-  // исходное значение возвращается, только когда закончился последний
+  // several scenarios may set the same tariff/sanction: the maximum of active claims applies,
+  // and the original value returns only when the last one ends
   claim(locks, arr, k, id, v) {
     let L = locks.get(k);
     if (!L) locks.set(k, L = { base: arr[k], claims: new Map() });
@@ -196,9 +197,9 @@ export class Sim {
   applyScenarios() {
     for (const s of this.S) s.mods = this.blankMods(), s.pulse = 0, s.cryptoBan = 0;
     this.oilShock = 0;
-    this.peace = [];   // группы стран под действующим мирным соглашением (заполняется ниже)
+    this.peace = [];   // country groups under an active peace deal (filled below)
     for (const sc of this.scenarios) {
-      // duration 0 = бессрочно: шоки действуют до отмены, разовые величины (level/pop/debt) применяются за 1 месяц
+      // duration 0 = open-ended: shocks last until removed, one-off amounts (level/pop/debt) apply in 1 month
       const t0 = sc.start, dur = Math.max(sc.duration, 1), t1 = sc.duration > 0 ? t0 + dur : Infinity;
       const once = sc.duration > 0 ? dur : 1, onceActive = this.t < t0 + once;
       if (this.t >= t0 && !sc.started) this.startScenario(sc);
@@ -220,11 +221,11 @@ export class Sim {
               case 'sent': s.mods.sent += v; break;
               case 'mil': s.mods.mil += v; break;
               case 'fiscal': s.mods.f += v; break;
-              case 'level': if (onceActive) s.pulse += v / once; break;       // % ВВП за весь срок
+              case 'level': if (onceActive) s.pulse += v / once; break;       // % of GDP over the whole duration
               case 'pop': if (onceActive) s.pop *= 1 + v / once / 100; break;
               case 'debt': if (onceActive) s.debt += v / once; break;
-              case 'fx': s.mods.fx += v; break;                               // % девальвации к доллару (пока действует)
-              case 'equity': if (this.t === t0) s.eqJump = (1 + s.eqJump) * (1 + v / 100) - 1; break;   // разовый обвал/рост рынка, %
+              case 'fx': s.mods.fx += v; break;                               // % depreciation vs USD (while active)
+              case 'equity': if (this.t === t0) s.eqJump = (1 + s.eqJump) * (1 + v / 100) - 1; break;   // one-off market crash/rally, %
               case 'cryptoBan': s.cryptoBan = 1; break;
             }
           }
@@ -237,7 +238,7 @@ export class Sim {
 
   isPeace(i, j) { return this.peace.length > 0 && this.peace.some(S => S.has(i) && S.has(j)); }
 
-  // ---------- войны ----------
+  // ---------- wars ----------
   milPower(i) {
     const s = this.S[i];
     return Math.pow(Math.max(1, s.gdp * s.mil / 100), 0.9) * (0.6 + 0.8 * s.stab);
@@ -262,7 +263,7 @@ export class Sim {
     const atk = w.primaryA, vic = w.primaryB;
     const inWar = new Set([...w.a, ...w.b]);
     const cand = new Set();
-    // защита жертвы: оборонные блоки и двусторонние союзы
+    // defending the victim: defense blocs and bilateral alliances
     for (const b of DEFENSE_BLOCS) {
       if (W.countries[vic].blocs.includes(b) && !W.countries[atk].blocs.includes(b))
         BLOCS[b].forEach(iso => { const k = W.idx.get(iso); if (k != null) cand.add(k); });
@@ -313,7 +314,7 @@ export class Sim {
       const shareA = PA / (PA + PB);
       const dmg = (i, share, primary) => {
         const s = this.S[i];
-        const d = w.intensity * 0.45 * share * 2 * (primary ? 1 : 0.3);   // % ВВП в месяц
+        const d = w.intensity * 0.45 * share * 2 * (primary ? 1 : 0.3);   // % of GDP per month
         s.pulse -= d; s.mods.infl += 0.35 * d; s.mods.sent -= 0.01 * d;
         s.pop *= 1 - d * 0.00015;
       };
@@ -329,13 +330,13 @@ export class Sim {
     }
   }
 
-  // ---------- главный шаг ----------
+  // ---------- main step ----------
   step() {
     const W = this.world, N = W.N, S = this.S, t = this.t;
     this.applyScenarios();
     this.stepWars();
 
-    // нефть
+    // oil
     let wg = 0, wgpot = 0, gw = 0, oilTot = 0, oilHit = 0;
     for (const s of S) { const c = W.countries[s.i]; wg += this.prevG[s.i] * s.gdp; wgpot += s.gpot * s.gdp; gw += s.gdp; oilTot += c.fuelExp / 100 * s.gdp; oilHit += c.fuelExp / 100 * s.gdp * (0.5 * Math.min(1, s.warCount) + 0.6 * s.sanctionPressure); }
     const gap = (wg - wgpot) / gw;
@@ -347,11 +348,11 @@ export class Sim {
     stepTrade(this);
     const year = this.startYear + Math.floor(t / 12);
 
-    // макро-обновление стран
+    // country macro update
     const newG = new Float32Array(N);
     for (let i = 0; i < N; i++) {
       const s = S[i], c = W.countries[i], m = s.mods;
-      // прогноз IMF WEO задаёт базовую траекторию: потенциальный рост, якорь инфляции, естественная безработица
+      // the IMF WEO forecast sets the baseline path: potential growth, inflation anchor, natural unemployment
       const fc = c.forecast;
       if (fc) {
         const fy = Math.min(year, 2031);
@@ -361,26 +362,26 @@ export class Sim {
       }
       let foreignG = 0, foreignBase = 0, sanc = 0;
       for (const j of W.partners[i]) {
-        const w = W.xs[i * N + j];                                   // спрос партнёров — по реальной структуре экспорта
+        const w = W.xs[i * N + j];                                   // partner demand weighted by the actual export structure
         foreignG += w * this.prevG[j]; foreignBase += w * S[j].gpot;
         sanc += W.share[i * N + j] * this.San[j * N + i];
       }
       s.sanctionPressure = Math.min(1, sanc * 2.5);
       if (s.defaultT > 0) s.defaultT--;
-      // уровневые эффекты: торговля (экспорт к контрфактуалу, издержки пошлин), нестабильность, реальный курс
+      // level effects: trade (exports vs counterfactual, tariff costs), instability, real exchange rate
       const levelT = P.tradeKappa * c.exports * (s.expIdx - 1) - P.tariffCost * c.imports * s.tauImp
         - Math.max(0, 0.3 - s.stab) * 40 + fxLevel(s, c);
       const prevLevel = s.level;
       s.level += 0.08 * (levelT - s.level);
-      const dLevel = s.level - prevLevel + s.pulse;                   // % за месяц
+      const dLevel = s.level - prevLevel + s.pulse;                   // % per month
       s.dLevel = dLevel;
-      // экзогенные факторы
+      // exogenous drivers
       const e = clamp(c.energyImp / 100, -1, 1);
       const oilEff = -1.8 * (p - 1) * e;
       const spill = 0.35 * c.openness * (foreignG - foreignBase);
       const fEff = s.f + m.f;
       const milExtra = s.mil - s.mil0;
-      const tight = s.r - (s.r0 + (s.infl - s.infl0));   // жёсткость политики относительно «нейтральной» траектории
+      const tight = s.r - (s.r0 + (s.infl - s.infl0));   // policy stance relative to the "neutral" path
       const target = s.gpot + P.fiscalMult * fEff + equityGrowth(this, s) + 2 * s.crypto * clamp(this.btcMom || 0, -1, 1) + 0.1 * milExtra - 0.25 * tight + spill + oilEff + m.g + P.cycAmp * this.cyc * c.openness
         + P.gNoise * (c.income === 'LIC' ? P.volLIC : c.income === 'HIC' ? P.volHIC : 1) * this.gs(i, 1);
       s.gc += P.gAdj * (target - s.gc);
@@ -389,10 +390,10 @@ export class Sim {
       s.gdp *= 1 + s.gc / 1200 + dLevel / 100;
       s.pop *= 1 + s.popGrowth / 1200;
 
-      // инфляция = базовая + однократные сдвиги уровня цен (пошлины и курс), которые держатся в годовой инфляции ~год
+      // inflation = core + one-off price-level shifts (tariffs, exchange rate) that stay in annual inflation for ~a year
       const oilInfl = P.oilInfl * (p - 1) * Math.max(e, 0);
       const inflT = s.anchor + 0.25 * (s.gc - s.gpot) + 0.35 * fEff + oilInfl - 0.3 * tight + m.infl;
-      // шум — отдельная AR(1)-компонента с той же инерцией: граница снизу не копится в состоянии (иначе смещение вверх)
+      // noise is a separate AR(1) component with the same persistence, so the lower bound does not accumulate in the state (that would bias inflation up)
       s.inflCore = clamp(s.inflCore + P.inflAdj * (inflT - s.inflCore), -5, 150);
       s.inflN = (1 - P.inflAdj) * (s.inflN || 0) + P.inflNoise * clamp(P.inflScale0 + P.inflScaleK * s.anchor, 0.2, 3) * this.gs(i, 2);
       s.tarPL += 0.15 * (P.tariffPass * c.imports * s.tauImp - s.tarPL);
@@ -401,15 +402,15 @@ export class Sim {
       s.infl = clamp(s.inflCore + s.inflN + s.inflPL, -1.5, 300);
       m.sent += 0.15 * s.crypto * clamp(this.btcMom || 0, -1.5, 1.5);
 
-      // безработица (закон Окуна)
+      // unemployment (Okun's law)
       s.unemp = clamp(s.unemp + (-P.okun * (s.gc - s.gpot) / 12) + 0.08 * (s.uN + m.unemp - s.unemp), 0.4, 50);
 
-      // госдолг
+      // public debt
       const deficit = s.deficit0 + fEff + (s.mil - s.mil0) + s.debt / 100 * Math.max(-3, s.r - s.r0);
       s.debt = clamp(s.debt + (deficit - s.debt * (s.g + s.infl) / 100) / 12, 0, 400);
       if (s.debt > 120 + 60 * c.ge && s.r - s.r0 > 2 && this.rnd(i, 3) < 0.01 * (s.debt / 150)) this.sovereignDefault(i);
 
-      // стабильность
+      // stability
       const misery = Math.min(s.infl, 60) + s.unemp;
       const stabT = clamp(s.stab0 - 0.008 * clamp(misery - s.misery0, -10, 80) - 0.12 * Math.min(1, s.warCount) - 0.3 * s.sanctionPressure * 0.4
         - 0.5 * Math.max(0, s.protest - 0.1) + m.stab, 0.01, 0.99);
@@ -418,11 +419,11 @@ export class Sim {
     this.prevG = newG;
     stepFx(this); stepCrypto(this); stepEquity(this);
 
-    // граждане, политика, решения правительств
+    // citizens, politics, government decisions
     for (let i = 0; i < N; i++) updateCitizens(this, S[i], W.countries[i]);
     for (let i = 0; i < N; i++) decide(this, i);
 
-    // отношения
+    // relations
     for (let i = 0; i < N; i++) for (let j = i + 1; j < N; j++) {
       const k = i * N + j;
       const ties = Math.min(0.3, W.share[k] * 3 + W.share[j * N + i] * 3);
@@ -473,7 +474,7 @@ export class Sim {
     return ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'][m] + ' ' + y;
   }
 
-  // значение метрики для раскраски/таблиц
+  // metric value for map coloring and tables
   metric(i, key, base) {
     const s = this.S[i];
     switch (key) {
@@ -491,9 +492,9 @@ export class Sim {
       case 'dStab': return base ? (s.stab - base.S[i].stab) * 100 : 0;
       case 'dUnemp': return base ? s.unemp - base.S[i].unemp : 0;
       case 'dInfl': return base ? s.infl - base.S[i].infl : 0;
-      case 'fx': return (Math.exp(s.e) - 1) * 100;                         // изменение курса к $ с начала, % (+ — девальвация)
-      case 'eq': return (Math.exp(s.eq) - 1) * 100;                        // фондовый индекс в местной валюте, % с начала
-      case 'expIdx': return (s.expIdx - 1) * 100;                          // экспорт к сценарию без барьеров, %
+      case 'fx': return (Math.exp(s.e) - 1) * 100;                         // change vs USD since start, % (+ = depreciation)
+      case 'eq': return (Math.exp(s.eq) - 1) * 100;                        // stock index in local currency, % since start
+      case 'expIdx': return (s.expIdx - 1) * 100;                          // exports vs a no-barrier counterfactual, %
       case 'crypto': return s.crypto * 100;
       case 'gdpUsd': return s.gdp * Math.exp(s.Plog - s.e);
       case 'dFx': return base ? (Math.exp(s.e - base.S[i].e) - 1) * 100 : 0;

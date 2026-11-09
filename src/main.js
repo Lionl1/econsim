@@ -12,7 +12,7 @@ const $ = s => document.querySelector(s);
 const MONTHS = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
 const getJson = url => fetch(url).then(r => (r.ok ? r.json() : null)).catch(() => null);
 
-// мини-график для KPI: последние ~10 лет, линия сценария и пунктир базы
+// KPI sparkline: last ~10 years, scenario line and dashed baseline
 function spark(data, baseData, color) {
   const n = Math.min(data.length, 120), d = data.slice(-n), b = baseData ? baseData.slice(-n) : null;
   if (n < 2) return '';
@@ -31,7 +31,7 @@ async function boot() {
 
   app.newSims = () => {
     app.sim = new Sim(world, { seed: app.seed });
-    app.base = new Sim(world, { seed: app.seed, baseline: true });
+    app.base = new Sim(world, { seed: app.seed });
   };
   app.newSims();
 
@@ -40,7 +40,7 @@ async function boot() {
     clearTimeout(app._toast); app._toast = setTimeout(() => el.classList.remove('on'), 2400);
   };
 
-  // ---------- глобус ----------
+  // ---------- globe ----------
   const tip = $('#tooltip');
   app.globe = new Globe($('#globe'), world, topo, {
     onHover: (id, xy) => {
@@ -69,14 +69,14 @@ async function boot() {
     setRunning(true);
   };
 
-  // ---------- панели ----------
+  // ---------- panels ----------
   app.right = new RightPanel(app);
   initLeft(app);
   initEnsemble(app);
   app.refreshActive();
   app.right.show(-1);
 
-  // ---------- метрика глобуса ----------
+  // ---------- map metric ----------
   const mapkey = $('#mapkey');
   const renderMenu = () => {
     $('#metric-menu').innerHTML = METRIC_GROUPS.map(([g, keys]) => `<div class="grp">${g}</div><div class="opts">${keys.map(k => `<button data-k="${k}" class="${k === app.metric ? 'on' : ''}">${METRICS[k].label}</button>`).join('')}</div>`).join('');
@@ -87,7 +87,7 @@ async function boot() {
   addEventListener('click', e => { if (!mapkey.contains(e.target)) mapkey.classList.remove('open'); });
   renderMenu();
 
-  // ---------- управление временем ----------
+  // ---------- time controls ----------
   const playBtn = $('#btn-play');
   function setRunning(v) { app.running = v; playBtn.textContent = v ? '❚❚' : '▶'; playBtn.classList.toggle('on', v); }
   app.setRunning = setRunning;
@@ -103,7 +103,7 @@ async function boot() {
 
   function stepOnce() { app.sim.step(); app.base.step(); }
 
-  // ---------- обновления интерфейса ----------
+  // ---------- UI refresh ----------
   function refreshMap() {
     const { sim, base } = app, key = app.metric;
     app.globe.setColors(world.countries.map(c => colorOf(key, sim.metric(c.i, key, base))));
@@ -131,7 +131,7 @@ async function boot() {
       const cls = !show || !d.good ? '' : (dv > 0) === (d.good > 0) ? 'pos' : 'neg';
       return `<div class="kpi${d.alert?.(a) ? ' alert' : ''}"><span class="k">${d.k}</span><span class="kv">${d.v(a, sim)}${show ? `<span class="kd ${cls}">${dv > 0 ? '+' : ''}${dv.toFixed(Math.abs(dv) >= 10 ? 0 : 2)}${d.u}</span>` : ''}</span>${spark(d.h(sim.wh), sim.scenarios.length ? d.h(base.wh) : null, d.c)}</div>`;
     }).join('');
-    // шкала времени: горизонт растёт по мере хода симуляции
+    // timeline: the horizon grows as the simulation runs
     const horizon = Math.max(240, Math.ceil((sim.t + 1) / 120) * 120);
     $('#tl-fill').style.width = (sim.t / horizon * 100) + '%';
     const years = horizon / 12, stepY = years > 30 ? 10 : 5;
@@ -198,7 +198,7 @@ async function boot() {
   }
   app.refreshAll = refreshAll;
 
-  // ---------- главный цикл ----------
+  // ---------- main loop ----------
   let prev = performance.now(), acc = 0;
   function frame(now) {
     const dt = Math.min(0.1, (now - prev) / 1000); prev = now;

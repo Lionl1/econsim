@@ -1,4 +1,4 @@
-// Загрузка мира для Node-скриптов: страны + торговля Comtrade + рынки (если скачаны).
+// World loader for Node scripts: countries + Comtrade trade + markets (when downloaded).
 import fs from 'node:fs';
 import { buildWorld } from '../src/sim/world.js';
 const read = f => { const u = new URL('../public/data/' + f, import.meta.url); return fs.existsSync(u) ? JSON.parse(fs.readFileSync(u)) : null; };

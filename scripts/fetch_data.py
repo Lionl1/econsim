@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Собирает данные по всем независимым странам мира -> public/data/countries.json
+"""Collects data for all countries of the world -> public/data/countries.json
 
-Источники:
-  * world-countries (mledoze/countries, npm) — список стран, ISO-коды, координаты, границы, русские названия
-  * World Bank Open Data API — макро-индикаторы (последнее доступное значение) и индикаторы управления (WGI)
-  * Natural Earth через world-atlas — полигоны границ для глобуса
-Недостающие значения заполняются медианой по региону и помечаются в поле `imputed`.
+Sources:
+  * world-countries (mledoze/countries, npm) — country list, ISO codes, coordinates, borders, Russian names
+  * World Bank Open Data API — macro indicators (latest available value) and governance indicators (WGI)
+  * Natural Earth via world-atlas — border polygons for the globe
+Missing values are filled with the regional median and listed in the `imputed` field.
+Usage: python3 scripts/fetch_data.py            — rebuild everything
+       python3 scripts/fetch_data.py --add UNK  — add/update one country (world-countries code) without refetching the rest
 """
 import json, statistics, sys, urllib.request, urllib.parse
 from concurrent.futures import ThreadPoolExecutor
@@ -24,32 +26,32 @@ def get(url, retries=3):
                 raise
 
 INDICATORS = {
-    "gdp": "NY.GDP.MKTP.CD",          # ВВП, текущ. $
-    "gdpPc": "NY.GDP.PCAP.CD",        # ВВП на душу
-    "pop": "SP.POP.TOTL",             # население
-    "growth": "NY.GDP.MKTP.KD.ZG",    # рост ВВП %
-    "infl": "FP.CPI.TOTL.ZG",         # инфляция %
-    "unemp": "SL.UEM.TOTL.ZS",        # безработица %
-    "debt": "GC.DOD.TOTL.GD.ZS",      # гос. долг % ВВП
-    "exports": "NE.EXP.GNFS.ZS",      # экспорт % ВВП
-    "imports": "NE.IMP.GNFS.ZS",      # импорт % ВВП
-    "mil": "MS.MIL.XPND.GD.ZS",       # военные расходы % ВВП
-    "lifeExp": "SP.DYN.LE00.IN",      # продолжительность жизни
-    "gini": "SI.POV.GINI",            # неравенство
-    "fuelExp": "TX.VAL.FUEL.ZS.UN",   # топливо % экспорта товаров
-    "energyImp": "EG.IMP.CONS.ZS",    # чистый импорт энергии % потребления
-    "fdi": "BX.KLT.DINV.WD.GD.ZS",    # ПИИ % ВВП
-    "popGrowth": "SP.POP.GROW",       # прирост населения %
-    "urban": "SP.URB.TOTL.IN.ZS",     # урбанизация %
-    "tertiary": "SE.TER.ENRR",        # высшее образование %
-    "internet": "IT.NET.USER.ZS",     # интернет %
-    "wgiVA": "GOV_WGI_VA.EST",        # голос и подотчётность (демократичность)
-    "wgiPV": "GOV_WGI_PV.EST",        # политическая стабильность
-    "wgiGE": "GOV_WGI_GE.EST",        # эффективность государства
-    "wgiCC": "GOV_WGI_CC.EST",        # контроль коррупции
+    "gdp": "NY.GDP.MKTP.CD",          # GDP, current USD
+    "gdpPc": "NY.GDP.PCAP.CD",        # GDP per capita
+    "pop": "SP.POP.TOTL",             # population
+    "growth": "NY.GDP.MKTP.KD.ZG",    # real GDP growth, %
+    "infl": "FP.CPI.TOTL.ZG",         # CPI inflation, %
+    "unemp": "SL.UEM.TOTL.ZS",        # unemployment, %
+    "debt": "GC.DOD.TOTL.GD.ZS",      # government debt, % GDP
+    "exports": "NE.EXP.GNFS.ZS",      # exports, % GDP
+    "imports": "NE.IMP.GNFS.ZS",      # imports, % GDP
+    "mil": "MS.MIL.XPND.GD.ZS",       # military spending, % GDP
+    "lifeExp": "SP.DYN.LE00.IN",      # life expectancy
+    "gini": "SI.POV.GINI",            # inequality
+    "fuelExp": "TX.VAL.FUEL.ZS.UN",   # fuel, % of merchandise exports
+    "energyImp": "EG.IMP.CONS.ZS",    # net energy imports, % of use
+    "fdi": "BX.KLT.DINV.WD.GD.ZS",    # FDI inflows, % GDP
+    "popGrowth": "SP.POP.GROW",       # population growth, %
+    "urban": "SP.URB.TOTL.IN.ZS",     # urban population, %
+    "tertiary": "SE.TER.ENRR",        # tertiary enrollment, %
+    "internet": "IT.NET.USER.ZS",     # internet users, %
+    "wgiVA": "GOV_WGI_VA.EST",        # voice and accountability (democracy)
+    "wgiPV": "GOV_WGI_PV.EST",        # political stability
+    "wgiGE": "GOV_WGI_GE.EST",        # government effectiveness
+    "wgiCC": "GOV_WGI_CC.EST",        # control of corruption
 }
 
-# ручные данные для стран, отсутствующих в WB (оценки, ~2023-24; помечаются как manual)
+# manual data for countries missing in WB (estimates, ~2023-24; marked as manual)
 MANUAL = {
     "TWN": dict(gdp=7.9e11, gdpPc=33500, pop=23.4e6, growth=3.5, infl=2.2, unemp=3.4, debt=28, exports=62, imports=52,
                 mil=2.5, lifeExp=80.7, gini=34, fuelExp=2, energyImp=97, fdi=2.0, urban=79, tertiary=85, internet=92,
@@ -59,10 +61,10 @@ MANUAL = {
                 wgiVA=-2.2, wgiPV=-0.1, wgiGE=-1.8, wgiCC=-1.6),
 }
 
-# world-countries -> коды World Bank (у Косово в world-countries временный код UNK и нет числового)
+# world-countries -> World Bank codes (Kosovo has the temporary code UNK and no numeric code in world-countries)
 ISO_FIX = {"UNK": "XKX"}
 NAME_RU_FIX = {"XKX": "Косово"}
-EXTRA = ("TWN", "PSE", "UNK")   # частично признанные, но самостоятельные экономики
+EXTRA = ("TWN", "PSE", "UNK")   # partially recognized but separate economies
 
 def fetch_indicator(item, country="all"):
     key, code = item
@@ -80,7 +82,7 @@ def fetch_indicator(item, country="all"):
 
 def main():
     wc = json.loads(get("https://cdn.jsdelivr.net/npm/world-countries@5.1.0/countries.json"))
-    # Тайвань и Палестина формально без полного признания, но нужны как самостоятельные акторы модели
+    # Taiwan, Palestine and Kosovo lack full recognition but are separate actors in the model
     wc = [c for c in wc if (c.get("independent") and c.get("ccn3")) or c["cca3"] in EXTRA]
     print(f"independent countries with numeric code: {len(wc)}")
 
@@ -89,7 +91,7 @@ def main():
     for k, v in results.items():
         print(f"  {k:10s} {len(v):4d} values")
 
-    # метаданные WB (регион, уровень дохода, столица с координатами)
+    # WB metadata (region, income level, capital with coordinates)
     meta = json.loads(get("https://api.worldbank.org/v2/country?format=json&per_page=400"))[1]
     wbmeta = {m["id"]: m for m in meta}
 
@@ -138,7 +140,7 @@ def main():
         rec["years"] = years
         countries.append(rec)
 
-    # импутация: медиана по региону (затем по миру)
+    # imputation: regional median (then world median)
     for key in INDICATORS:
         world = [r[key] for r in countries if key in r]
         wmed = statistics.median(world)
@@ -151,7 +153,7 @@ def main():
                 vals = by_region.get(r["region"])
                 r[key] = statistics.median(vals) if vals else wmed
                 r["imputed"].append(key)
-    # ВВП/душу согласовать с ВВП/население, если импутировано
+    # keep GDP consistent with GDP per capita x population when imputed
     for r in countries:
         if "gdp" in r["imputed"] and "gdpPc" not in r["imputed"]:
             r["gdp"] = r["gdpPc"] * r["pop"]
@@ -163,8 +165,8 @@ def main():
     print("heavily imputed:", miss)
 
 def add_one(cca3):
-    """Добавить/обновить одну страну в существующем countries.json, не перекачивая остальные
-    (импутация — медианой региона по уже сохранённым данным)."""
+    """Add or update one country in the existing countries.json without refetching the rest
+    (imputation uses the regional median of the saved data)."""
     path = OUT / "countries.json"
     countries = json.loads(path.read_text())
     wc = {c["cca3"]: c for c in json.loads(get("https://cdn.jsdelivr.net/npm/world-countries@5.1.0/countries.json"))}

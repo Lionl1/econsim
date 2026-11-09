@@ -1,4 +1,4 @@
-// Сравнение моментов модели с историей World Bank 2000-2024.  node scripts/calibrate.mjs [seeds] [--json]
+// Compare model moments with World Bank history 2000-2024.  node scripts/calibrate.mjs [seeds]
 import fs from 'node:fs';
 import { loadWorld } from './load.mjs';
 import { Sim, P } from '../src/sim/engine.js';
@@ -16,7 +16,7 @@ const ar1 = a => { const x = a.slice(0, -1), y = a.slice(1), mx = mean(x), my = 
 const corr = (a, b) => { const ma = mean(a), mb = mean(b); let n = 0, da = 0, db = 0; for (let k = 0; k < a.length; k++) { n += (a[k] - ma) * (b[k] - mb); da += (a[k] - ma) ** 2; db += (b[k] - mb) ** 2; } return n / Math.sqrt(da * db || 1); };
 const slope = (x, y) => { const mx = mean(x), my = mean(y); let n = 0, d = 0; for (let k = 0; k < x.length; k++) { n += (x[k] - mx) * (y[k] - my); d += (x[k] - mx) ** 2; } return n / (d || 1); };
 
-// набор годовых рядов -> метрики
+// set of annual series -> moments
 function metrics(series /* [{g:[],infl:[],u:[],w:number(gdp weight),inc}] */, worldG) {
   const out = {};
   const f = (name, fn, filt = () => true) => { const v = series.filter(filt).map(fn).filter(Number.isFinite); out[name] = med(v); };
@@ -34,7 +34,7 @@ function metrics(series /* [{g:[],infl:[],u:[],w:number(gdp weight),inc}] */, wo
   return out;
 }
 
-// --- эмпирика ---
+// --- data ---
 const years = Array.from({ length: 25 }, (_, k) => String(2000 + k));
 const emp = [];
 for (const c of raw) {
@@ -46,7 +46,7 @@ for (const c of raw) {
 const wy = years.filter(y => hist._WLD.growth[y] != null);
 const empM = metrics(emp, wy.map(y => hist._WLD.growth[y]));
 
-// --- модель ---
+// --- model ---
 const allRuns = [];
 for (let seed = 1; seed <= SEEDS; seed++) {
   const sim = new Sim(world, { seed });
@@ -66,7 +66,7 @@ for (let seed = 1; seed <= SEEDS; seed++) {
 }
 const simM = Object.fromEntries(Object.keys(empM).map(k => [k, mean(allRuns.map(r => r[k]))]));
 const w = Math.max(...Object.keys(empM).map(k => k.length));
-console.log('metric'.padEnd(w), 'реальность'.padStart(11), 'модель'.padStart(9), 'отн.ошибка');
+console.log('metric'.padEnd(w), 'data'.padStart(11), 'model'.padStart(9), 'rel.err'.padStart(8));
 for (const k of Object.keys(empM)) {
   const e = empM[k], s = simM[k], err = Math.abs(e) > 0.02 ? (s - e) / Math.abs(e) : NaN;
   const flag = Math.abs(err) > 0.35 ? ' ◀' : '';

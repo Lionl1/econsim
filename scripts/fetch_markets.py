@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Валюты, курсы, прогнозы и крипта из открытых источников -> public/data/markets.json
+"""Currencies, exchange rates, forecasts, crypto and stock markets from open sources -> public/data/markets.json
 
-  * world-countries (mledoze)   — валюта каждой страны
-  * open.er-api.com             — текущие курсы к доллару (exchangerate-api, бесплатно, без ключа)
-  * World Bank PA.NUS.FCRF      — годовые официальные курсы 2000–2024 (для калибровки волатильности)
-  * IMF WEO DataMapper API      — прогнозы роста, инфляции и безработицы на 2026–2031
-  * CoinGecko public API        — цена и капитализация BTC/ETH, дневная история BTC за год (волатильность)
-Режимы курса (союз/привязка/долларизация) заданы вручную по классификации IMF AREAER (упрощённо).
+  * world-countries (mledoze)   — each country's currency
+  * open.er-api.com             — current rates vs USD (exchangerate-api, free, no key)
+  * World Bank PA.NUS.FCRF      — annual official rates 2005–2024 (FX volatility calibration)
+  * IMF WEO DataMapper API      — growth, inflation and unemployment forecasts for 2026–2031
+  * CoinGecko public API        — BTC/ETH price and market cap, one year of daily BTC prices (volatility)
+  * World Bank CM.MKT.*         — stock market capitalization and annual index changes
+  * Wikidata (SPARQL, P2226)    — company market caps, used only when recent and plausible
+Exchange rate regimes (union / peg / dollarization) are set by hand after the IMF AREAER classification (simplified).
 """
 import json, math, statistics, time, urllib.request
 from pathlib import Path
@@ -24,19 +26,19 @@ def get(url, tries=3):
             err = e; time.sleep(2 * (k + 1))
     print("  ! failed", url, err); return None
 
-# якорная валюта для стран без собственной плавающей валюты
+# anchor currency for countries without their own floating currency
 DOLLARIZED = {"ECU": "USD", "SLV": "USD", "PAN": "USD", "TLS": "USD", "FSM": "USD", "MHL": "USD", "PLW": "USD", "ZWE": "USD",
               "MNE": "EUR", "XKX": "EUR", "AND": "EUR", "MCO": "EUR", "SMR": "EUR", "VAT": "EUR",
               "LIE": "CHF", "KIR": "AUD", "NRU": "AUD", "TUV": "AUD"}
 PEG_USD = ["SAU", "ARE", "QAT", "BHR", "OMN", "JOR", "BLZ", "BHS", "BRB", "DJI", "ERI", "CUB", "TKM",
-           "ATG", "DMA", "GRD", "KNA", "LCA", "VCT"]          # XCD — союз с привязкой к доллару
+           "ATG", "DMA", "GRD", "KNA", "LCA", "VCT"]          # XCD: currency union pegged to the dollar
 PEG_EUR = ["DNK", "BGR", "BEN", "BFA", "CIV", "GNB", "MLI", "NER", "SEN", "TGO", "CMR", "CAF", "TCD", "COG", "GNQ", "GAB",
            "COM", "CPV", "STP", "BIH"]
 CURRENCY_FIX = {"PSE": "ILS", "XKX": "EUR", "ZWE": "USD", "CUB": "CUP"}
 IMF_CODE = {"XKX": "UVK", "PSE": "WBG", "SSD": "SSD"}
 
-# Крупнейшие корпорации: курируемый список (страна, отрасль, доля зарубежной выручки, ориентировочная
-# капитализация 2025, млрд $). Капитализацию заменяем значением Wikidata, если оно свежее (2024+) и правдоподобное.
+# Largest corporations: curated list (country, sector, foreign revenue share, approximate 2025 market cap, USD bn).
+# The market cap is replaced by the Wikidata value when that is recent (2024+) and plausible.
 COMPANIES = [
   ("Nvidia", "USA", "semis", 0.55, 4300), ("Microsoft", "USA", "tech", 0.5, 3500), ("Apple", "USA", "tech", 0.6, 3600),
   ("Alphabet", "USA", "tech", 0.5, 3000), ("Amazon", "USA", "consumer", 0.4, 2300), ("Meta Platforms", "USA", "tech", 0.55, 1700),
@@ -61,13 +63,13 @@ COMPANIES = [
   ("SK Hynix", "KOR", "semis", 0.9, 150), ("Tokyo Electron", "JPN", "semis", 0.85, 80), ("Kweichow Moutai", "CHN", "consumer", 0.05, 250),
 ]
 
-# где производят продукцию компании, чьё производство в основном за рубежом (страна, доля себестоимости)
+# where companies that mostly manufacture abroad make their products (country, share of costs)
 PROD = {"Apple": ["CHN", 0.7], "Nvidia": ["TWN", 0.8], "Broadcom": ["TWN", 0.6], "Amazon": ["CHN", 0.3], "Walmart": ["CHN", 0.25],
         "Tesla": ["CHN", 0.3], "Sony": ["CHN", 0.4], "Samsung Electronics": ["VNM", 0.4], "Qualcomm": ["TWN", 0.8],
         "Meta Platforms": ["CHN", 0.1], "Alphabet": ["CHN", 0.1], "Microsoft": ["CHN", 0.15], "Toyota": ["USA", 0.2]}
 
 def wikidata_caps():
-    """Свежие капитализации в долларах из Wikidata (две простые выборки — сложная падает по таймауту)."""
+    """Recent USD market caps from Wikidata (two simple queries: one complex query times out)."""
     import urllib.parse
     def q(s):
         url = "https://query.wikidata.org/sparql?" + urllib.parse.urlencode({"query": s})
@@ -107,7 +109,7 @@ def main():
                     "rateUSD": rates["rates"].get(code) if rates else None}
     print("currencies without rate:", [i for i, c in cur.items() if not c["rateUSD"]])
 
-    # история официальных курсов World Bank -> годовая волатильность лог-изменений (2010–2024)
+    # World Bank official exchange rates -> annual volatility of log changes (2008–2024)
     wb = get("https://api.worldbank.org/v2/country/all/indicator/PA.NUS.FCRF?format=json&date=2005:2024&per_page=20000")
     series = {}
     for r in (wb[1] if wb else []):
@@ -117,9 +119,9 @@ def main():
         ys = sorted(y for y in s if y >= 2008)
         ch = [math.log(s[b] / s[a]) for a, b in zip(ys, ys[1:]) if b == a + 1]
         if len(ch) >= 8:
-            cur[iso]["fxVol"] = round(statistics.pstdev(ch), 4)                 # σ годового лог-изменения
-            cur[iso]["fxDrift"] = round(statistics.median(ch), 4)               # типичная годовая девальвация
-    # прогноз IMF WEO
+            cur[iso]["fxVol"] = round(statistics.pstdev(ch), 4)                 # sd of annual log change
+            cur[iso]["fxDrift"] = round(statistics.median(ch), 4)               # typical annual depreciation
+    # IMF WEO forecast
     fc = {}
     for key, ind in (("growth", "NGDP_RPCH"), ("infl", "PCPIPCH"), ("unemp", "LUR")):
         d = get(f"https://www.imf.org/external/datamapper/api/v1/{ind}?periods=2026,2027,2028,2029,2030,2031")
@@ -132,7 +134,7 @@ def main():
     weo = get("https://www.imf.org/external/datamapper/api/v1/NGDP_RPCH/WEOWORLD?periods=2026,2027,2028,2029,2030,2031")
     world_fc = {y: x for y, x in (weo or {}).get("values", {}).get("NGDP_RPCH", {}).get("WEOWORLD", {}).items() if 2026 <= int(y) <= 2031}
 
-    # крипта
+    # crypto
     px = get("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd&include_market_cap=true")
     hist = get("https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=365&interval=daily")
     vol = None
@@ -143,7 +145,7 @@ def main():
     crypto = {"btc": {"price": px["bitcoin"]["usd"], "mcap": px["bitcoin"]["usd_market_cap"], "volAnnual": vol},
               "eth": {"price": px["ethereum"]["usd"], "mcap": px["ethereum"]["usd_market_cap"]}} if px else None
 
-    # фондовые рынки: капитализация (World Bank) и волатильность индексов (S&P Global Equity Indices, годовые изменения)
+    # stock markets: capitalization (World Bank) and index volatility (S&P Global Equity Indices, annual changes)
     equity = {}
     for key, ind in (("mcap", "CM.MKT.LCAP.CD"), ("mcapGdp", "CM.MKT.LCAP.GD.ZS")):
         d = get(f"https://api.worldbank.org/v2/country/all/indicator/{ind}?format=json&mrnev=1&per_page=400")
@@ -155,7 +157,7 @@ def main():
         if r["value"] is not None and r["countryiso3code"] in cur: ser.setdefault(r["countryiso3code"], []).append(math.log(1 + r["value"] / 100))
     for iso, ch in ser.items():
         if len(ch) >= 8: equity.setdefault(iso, {})["vol"] = round(statistics.pstdev(ch), 3)
-    equity.setdefault("TWN", {"mcap": 2.5e12, "mcapGdp": 300, "vol": 0.22, "manual": True})   # нет в World Bank: оценка по TWSE
+    equity.setdefault("TWN", {"mcap": 2.5e12, "mcapGdp": 300, "vol": 0.22, "manual": True})   # not in World Bank: TWSE-based estimate
     print(f"equity: {len(equity)} countries, {sum('vol' in e for e in equity.values())} with index history")
     wd = wikidata_caps()
     companies = []

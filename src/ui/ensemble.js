@@ -1,4 +1,4 @@
-// Окно «Оценка на N прогонах»: сценарий против базового мира на многих сидах, медиана и коридор 10–90%.
+// "Evaluate" window: scenario vs baseline over many seeds, median and 10–90% band.
 import { lineChart } from './charts.js';
 import { esc } from './targets.js';
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""История World Bank 2000-2024 (рост, инфляция, безработица, ВВП $) -> data/history.json (для калибровки, не для UI)."""
+"""World Bank history 2000-2024 (growth, inflation, unemployment, GDP USD) -> data/history.json (for calibration, not used by the UI)."""
 import json, urllib.request
 from pathlib import Path
 OUT = Path(__file__).resolve().parent.parent / "data"; OUT.mkdir(exist_ok=True)
@@ -13,7 +13,7 @@ for k, code in IND.items():
         if r["countryiso3code"] in iso3 and r["value"] is not None:
             res.setdefault(r["countryiso3code"], {}).setdefault(k, {})[r["date"]] = r["value"]
     print(k, len(rows))
-# мировой рост
+# world growth
 url = "https://api.worldbank.org/v2/country/WLD/indicator/NY.GDP.MKTP.KD.ZG?format=json&date=2000:2024&per_page=100"
 res["_WLD"] = {"growth": {r["date"]: r["value"] for r in json.load(urllib.request.urlopen(url, timeout=60))[1] if r["value"] is not None}}
 json.dump(res, open(OUT / "history.json", "w"))

@@ -1,4 +1,4 @@
-// Строит статический «мир»: страны, расстояния, торговые веса (гравитационная модель), базовые отношения.
+// Builds the static "world": countries, distances, trade matrix and shares, currencies, forecasts, baseline relations.
 import { BLOCS, ALLIES, RIVALRIES, NATO_ADVERSARIES, NUCLEAR } from './blocs.js';
 
 const R = 6371;
@@ -27,7 +27,7 @@ export function buildWorld(raw, { trade = null, markets = null } = {}) {
     };
   });
 
-  // расстояния между столицами
+  // distances between capitals
   const dist = new Float32Array(N * N);
   for (let i = 0; i < N; i++) for (let j = i + 1; j < N; j++) {
     const d = haversine(countries[i].cLat, countries[i].cLon, countries[j].cLat, countries[j].cLon);
@@ -38,7 +38,7 @@ export function buildWorld(raw, { trade = null, markets = null } = {}) {
 
   const sharedBlocs = (a, b) => a.blocs.filter(x => b.blocs.includes(x) && x !== 'G20' && x !== 'G7').length;
 
-  // торговые веса share[i][j]: доля внешней торговли i, приходящаяся на j (гравитационная модель)
+  // trade weights share[i][j]: j's share of i's foreign trade (gravity model, replaced by Comtrade below)
   const share = new Float32Array(N * N);
   for (let i = 0; i < N; i++) {
     let sum = 0;
@@ -51,11 +51,11 @@ export function buildWorld(raw, { trade = null, markets = null } = {}) {
     }
     for (let j = 0; j < N; j++) share[i * N + j] /= sum;
   }
-  // ---- реальная торговля (UN Comtrade) ----
-  // X[i*N+j] — экспорт i в j, млн $. Структура по партнёрам — из Comtrade (товары), итог — экспорт по World Bank
-  // (товары+услуги). Страны без данных Comtrade получают гравитационную структуру.
+  // ---- actual trade (UN Comtrade) ----
+  // X[i*N+j]: exports from i to j, USD mn. Partner structure from Comtrade (goods), total from World Bank exports
+  // (goods + services). Countries without Comtrade data get the gravity structure.
   const X = new Float64Array(N * N);
-  const expTot = countries.map(c => c.exports / 100 * c.gdp / 1e6);               // млн $
+  const expTot = countries.map(c => c.exports / 100 * c.gdp / 1e6);               // USD mn
   let tradeCover = 0;
   if (trade?.exports) {
     for (let i = 0; i < N; i++) {
@@ -65,11 +65,11 @@ export function buildWorld(raw, { trade = null, markets = null } = {}) {
     for (let i = 0; i < N; i++) {
       let s = 0; for (let j = 0; j < N; j++) s += X[i * N + j];
       if (s > 0) { tradeCover++; for (let j = 0; j < N; j++) X[i * N + j] *= expTot[i] / s; }
-      else for (let j = 0; j < N; j++) X[i * N + j] = expTot[i] * share[i * N + j];   // гравитация как запасной вариант
+      else for (let j = 0; j < N; j++) X[i * N + j] = expTot[i] * share[i * N + j];   // gravity as the fallback
       countries[i].tradeData = s > 0;
     }
   } else for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) X[i * N + j] = expTot[i] * share[i * N + j];
-  // доли: xs — куда i экспортирует, ms — откуда i импортирует, share — доля j во всей торговле i
+  // shares: xs, where i exports to; ms, where i imports from; share, j's share of all of i's trade
   const xs = new Float32Array(N * N), ms = new Float32Array(N * N);
   const impTot = new Float64Array(N);
   for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) impTot[j] += X[i * N + j];
@@ -83,7 +83,7 @@ export function buildWorld(raw, { trade = null, markets = null } = {}) {
     }
   }
 
-  // топ-партнёры для быстрого обхода
+  // top partners for fast iteration
   const partners = countries.map((_, i) => {
     const arr = [];
     for (let j = 0; j < N; j++) if (share[i * N + j] > 0) arr.push(j);
@@ -91,7 +91,7 @@ export function buildWorld(raw, { trade = null, markets = null } = {}) {
     return arr.slice(0, 40);
   });
 
-  // базовые отношения [-1..1]
+  // baseline relations [-1..1]
   const base = new Float32Array(N * N);
   for (let i = 0; i < N; i++) for (let j = i + 1; j < N; j++) {
     const a = countries[i], b = countries[j];
@@ -110,11 +110,11 @@ export function buildWorld(raw, { trade = null, markets = null } = {}) {
   RIVALRIES.forEach(([x, y, v]) => applyPair(x, y, r => Math.min(r, v)));
   for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) base[i * N + j] = clamp(base[i * N + j], -1, 1);
 
-  // альянсы (для вступления в войны): bilateral + defense blocs
+  // alliances (for joining wars): bilateral + defense blocs
   const allies = countries.map(() => new Set());
   ALLIES.forEach(([x, y]) => { const i = idx.get(x), j = idx.get(y); if (i != null && j != null) { allies[i].add(j); allies[j].add(i); } });
 
-  // группы для селекторов
+  // groups for selectors
   const groups = { all: countries.map(c => c.i) };
   countries.forEach(c => {
     (groups['region:' + c.region] ??= []).push(c.i);
@@ -125,7 +125,7 @@ export function buildWorld(raw, { trade = null, markets = null } = {}) {
     if (c.energyImp > 40) (groups['energyImp'] ??= []).push(c.i);
   });
 
-  // источники импорта для торговой модели: топ по доле импорта
+  // import sources for the trade model: top by import share
   const sources = countries.map((_, i) => {
     const arr = [];
     for (let j = 0; j < N; j++) if (ms[i * N + j] > 0) arr.push(j);
@@ -133,7 +133,7 @@ export function buildWorld(raw, { trade = null, markets = null } = {}) {
     return arr.slice(0, 45);
   });
 
-  // ---- валюты, прогнозы, крипта ----
+  // ---- currencies, forecasts, crypto ----
   const cur = markets?.currencies || {};
   countries.forEach(c => {
     const m = cur[c.iso3] || {};
@@ -142,7 +142,7 @@ export function buildWorld(raw, { trade = null, markets = null } = {}) {
     c.forecast = markets?.forecast?.[c.iso3] || null;
     c.equity = markets?.equity?.[c.iso3] || null;
   });
-  // экспорт, учтённый в торговой модели (пары «поставщик из топа источников импортёра»)
+  // exports covered by the trade model (pairs where the supplier is among the importer's top sources)
   const expCovered = new Float64Array(N);
   for (let i = 0; i < N; i++) for (const j of sources[i]) expCovered[j] += X[j * N + i];
 
@@ -151,7 +151,7 @@ export function buildWorld(raw, { trade = null, markets = null } = {}) {
     crypto: markets?.crypto || null, worldForecastPPP: markets?.worldForecast || null, worldForecast: forecastMER(countries), marketsAsOf: markets?.asOf || null };
 }
 
-// прогноз IMF для мира, взвешенный по ВВП в рыночных курсах (как и агрегат модели); IMF публикует его в ППС
+// IMF world forecast weighted by GDP at market rates (like the model aggregate); the IMF publishes it in PPP
 function forecastMER(countries) {
   const out = {};
   for (let y = 2026; y <= 2031; y++) {
@@ -162,7 +162,7 @@ function forecastMER(countries) {
   return out;
 }
 
-// «Селектор» цели -> массив индексов. Примеры: 'all', 'iso:USA', 'region:Europe', 'bloc:NATO', 'oilExp'
+// Target "selector" -> array of indices. Examples: 'all', 'iso:USA', 'region:Europe', 'bloc:NATO', 'oilExp'
 export function resolve(world, sel) {
   const out = new Set();
   const list = Array.isArray(sel) ? sel : [sel];

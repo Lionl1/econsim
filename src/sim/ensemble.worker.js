@@ -1,4 +1,4 @@
-// Воркер ансамбля: считает прогоны вне основного потока, чтобы глобус не замирал.
+// Ensemble worker: runs off the main thread so the globe keeps animating.
 import { buildWorld } from './world.js';
 import { runEnsemble } from './ensemble.js';
 

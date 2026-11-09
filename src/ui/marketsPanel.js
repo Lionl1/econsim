@@ -1,4 +1,4 @@
-// Вкладка «Рынки»: мировой фондовый рынок, биткоин, торговля, отрасли, валюты, биржи стран и корпорации.
+// "Markets" tab: world stocks, bitcoin, trade, sectors, currencies, country exchanges and corporations.
 import { lineChart } from './charts.js';
 import { esc } from './targets.js';
 import { SECTORS } from '../sim/equity.js';
@@ -41,7 +41,7 @@ export function initMarkets(app) {
       { data: btcN(sim.wh.btc), color: '#f7931a', label: 'BTC ÷4' },
     ], { height: 100, zeroLine: true, fmt: v => v.toFixed(0) + '%' });
 
-    // отрасли: столбики от нуля
+    // sectors: bars from zero
     const sec = Object.entries(SECTORS).map(([k, name]) => ({ name, v: pc(sim.sector[k]) }));
     const mx = Math.max(10, ...sec.map(s => Math.abs(s.v)));
     $('#m-sect').innerHTML = sec.map(s => {
@@ -49,21 +49,21 @@ export function initMarkets(app) {
       return `<div class="sect"><span>${s.name}</span><div class="sb"><i style="left:${s.v >= 0 ? 50 : 50 - w}%;width:${w}%;background:${s.v >= 0 ? 'var(--good)' : 'var(--bad)'}"></i></div>${sg(s.v, 0)}</div>`;
     }).join('');
 
-    // корпорации
+    // corporations
     const corps = [...sim.corps].map(co => ({ co, v: pc(co.v), d: pc(co.v - (base.corps.find(x => x.k === co.k)?.v ?? co.v)) })).sort((x, y) => y.co.mcap - x.co.mcap);
     $('#m-corp').innerHTML = `<tr><th>Компания</th><th class="n">с начала</th>${has ? '<th class="n">к базе</th>' : ''}</tr>` + corps.slice(0, 30).map(({ co, v, d }) => {
       const c = world.countries[co.hq], rel = co.relocated != null ? ` <span title="перенесла производство: ${esc(world.countries[co.relocated].nameRu)}">🏭→${flag(world.countries[co.relocated].iso2)}</span>` : '';
       return `<tr data-i="${co.hq}"><td>${flag(c.iso2)} ${esc(co.name)}${rel}<div class="hint" style="font-size:10.5px">${SECTORS[co.sector] || co.sector} · $${(co.mcap / 1e9).toFixed(0)} млрд</div></td><td class="n">${sg(v, 0)}</td>${has ? `<td class="n">${sg(d, 1)}</td>` : ''}</tr>`;
     }).join('');
 
-    // валюты
+    // currencies
     const fx = sim.S.map(s => ({ s, v: pc(s.e) })).filter(x => x.s.regime !== 'anchor' && x.s.gdp > 1e10);
     fx.sort((x, y) => y.v - x.v);
     const fxRow = ({ s, v }) => { const c = world.countries[s.i]; return `<div class="rel" data-i="${s.i}"><span>${flag(c.iso2)} ${esc(c.currency.code)} <span class="sub2">${esc(c.nameRu)} · ${REG[s.regime] || s.regime}</span></span><span class="rv">${sg(-v / (1 + v / 100) , 1)}</span></div>`; };
     $('#m-fx').innerHTML = fx.slice(0, 5).map(fxRow).join('') + '<div style="height:6px"></div>' + fx.slice(-4).reverse().map(fxRow).join('')
       + '<div class="hint" style="margin-top:4px">Число — изменение стоимости валюты в долларах (минус — подешевела).</div>';
 
-    // биржи
+    // exchanges
     const eq = sim.S.filter(s => s.mcapGdp > 0.15 && s.gdp > 5e10).map(s => ({ s, v: pc(s.eq), usd: pc(s.eq - s.e) })).sort((x, y) => y.usd - x.usd);
     const eqRow = ({ s, v, usd }) => { const c = world.countries[s.i]; return `<div class="rel" data-i="${s.i}"><span>${flag(c.iso2)} ${esc(c.nameRu)} <span class="sub2">кап. ${(s.mcapGdp * 100).toFixed(0)}% ВВП</span></span><span class="rv">${sg(v, 0)} <span class="sub2">в $ ${usd > 0 ? '+' : ''}${usd.toFixed(0)}%</span></span></div>`; };
     $('#m-eq').innerHTML = eq.slice(0, 5).map(eqRow).join('') + '<div style="height:6px"></div>' + eq.slice(-4).reverse().map(eqRow).join('');

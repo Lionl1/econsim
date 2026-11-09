@@ -1,9 +1,9 @@
-// Валюты. Для каждой страны — лог-курс к доллару e (рост = девальвация) и реальный курс q.
-// Режимы (IMF AREAER, упрощённо): float — плавающий; peg — привязка (может сорваться); union — общий курс
-// (еврозона считается как одна экономика); dollarized — чужая валюта (курс якоря); anchor — сам доллар США.
-// Плавающий реальный курс тянется к равновесию q*: разница реальных ставок с США (UIP), риск-премия
-// (стабильность, санкции, война, дефолт), нефть для экспортёров, сценарные шоки; шум — по истории курса (World Bank).
-// Обратные связи: перенос курса в цены и реальная девальвация → чистый экспорт (минус долларовые долги у EM).
+// Exchange rates. Each country has a log rate vs USD, e (up = depreciation), and a real rate q.
+// Regimes (IMF AREAER, simplified): float; peg (can break); union (shared rate, the euro area is one economy);
+// dollarized (uses another currency, follows its anchor); anchor (the US dollar itself).
+// The floating real rate is pulled to an equilibrium q*: real rate gap with the US (UIP), risk premium
+// (stability, sanctions, war, default), oil for exporters, scenario shocks; noise from the rate history (World Bank).
+// Feedbacks: pass-through to prices, and real depreciation -> net exports (minus dollar-debt effects for EMs).
 import { P } from './params.js';
 import { gauss } from './rng.js';
 
@@ -24,7 +24,7 @@ export function initFx(sim) {
 const anchorE = (sim, code) => code === 'USD' ? 0 : code === 'EUR' ? sim.eur.e
   : code === 'AUD' ? sim.S[sim.world.idx.get('AUS')].e : code === 'CHF' ? sim.S[sim.world.idx.get('CHE')].e : 0;
 
-// равновесный реальный курс для «как если бы курс был плавающим»
+// equilibrium real rate "as if the currency were floating"
 function qStar(sim, s, c) {
   const us = sim.S[sim.usa];
   const rrDiff = (s.r - s.infl - s.rr0) - (us.r - us.infl - us.rr0);
@@ -37,7 +37,7 @@ function qStar(sim, s, c) {
 export function stepFx(sim) {
   const W = sim.world, S = sim.S, t = sim.t, us = S[sim.usa];
   for (const s of S) s.Plog += s.infl / 1200;
-  // еврозона: агрегат членов, взвешенный по ВВП
+  // euro area: GDP-weighted aggregate of members
   const ez = sim.eur;
   if (ez.members.length) {
     let w = 0, rr = 0, infl = 0, risk = 0, sh = 0;
@@ -55,7 +55,7 @@ export function stepFx(sim) {
     else if (s.regime === 'peg') {
       s.e = anchorE(sim, cur.anchor);
       s.q = s.e - (s.Plog - us.Plog);
-      const pressure = qStar(sim, s, c) - s.q;            // >0 — валюта переоценена относительно равновесия
+      const pressure = qStar(sim, s, c) - s.q;            // >0: the currency is overvalued vs equilibrium
       const p = s.mods.fx > 0 ? 1 : pressure > P.pegBreak ? 0.015 : 0;
       if (p && sim.rnd(s.i, 120) < p) {
         s.regime = 'float';
@@ -66,18 +66,18 @@ export function stepFx(sim) {
       const qBase = s.q - s.qShock;
       const qs = qStar(sim, s, c) - s.mods.fx / 100;
       const nb = qBase + P.fxAdj * (qs - qBase) + sigma * gauss(sim.seed, s.i, t, 121);
-      s.qShock += 0.5 * (s.mods.fx / 100 - s.qShock);      // сценарная девальвация проходит быстро
+      s.qShock += 0.5 * (s.mods.fx / 100 - s.qShock);      // scenario depreciation passes through quickly
       s.q = clamp(nb + s.qShock, -1.5, 4);
       s.e = s.q + (s.Plog - us.Plog);
     }
-    // перенос курса в цены — только реальные движения (q): девальвация по ППС уже отражает собственную инфляцию
+    // pass-through uses real moves (q) only: PPP depreciation already reflects the country's own inflation
     const pass = c.income === 'HIC' ? P.fxPassAE : P.fxPassEM;
     s.fxPL += 0.15 * (pass * s.q * 100 - s.fxPL);
     s.fxPLslow += (s.fxPL - s.fxPLslow) / 12;
   }
 }
 
-// вклад курса в уровень ВВП (в %): реальная девальвация → экспорт, минус эффект долларовых долгов у EM
+// FX contribution to the GDP level (%): real depreciation -> exports, minus dollar-debt effects for EMs
 export function fxLevel(s, c) {
   const k = P.fxTrade * (c.exports / 100) - (c.income === 'HIC' ? 0 : P.fxBalance * 0.3);
   return clamp(k * s.q, -15, 15);

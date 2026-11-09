@@ -1,4 +1,4 @@
-// Левая панель: готовые сценарии, конструктор, источники данных.
+// Left panel: presets, prompt, builder, markets, data sources.
 import { PRESETS, SHOCK_VARS } from '../sim/scenarios.js';
 import { targetSelectHtml, describeEffect, esc } from './targets.js';
 import { parseEvent } from '../sim/nlp.js';
@@ -16,14 +16,14 @@ export function initLeft(app) {
     document.body.classList.remove('left-collapsed');
     if (tab === 'mkt') app.refreshMarkets?.(true);
   };
-  // повторный клик по активной иконке сворачивает панель
+  // clicking the active icon again collapses the panel
   rail.forEach(b => b.onclick = () => b.classList.contains('on') && !document.body.classList.contains('left-collapsed')
     ? document.body.classList.add('left-collapsed') : app.openTab(b.dataset.tab));
   $('#left-close').onclick = () => document.body.classList.add('left-collapsed');
   initScenarios(app); initBuilder(app); initPrompt(app); initMarkets(app); initSources(app);
 }
 
-// ---------- вкладка «Сценарии» ----------
+// ---------- "Scenarios" tab ----------
 function initScenarios(app) {
   const root = $('#tab-scen'), T = app.T;
   root.innerHTML = `
@@ -57,7 +57,7 @@ function initScenarios(app) {
   };
 }
 
-// ---------- вкладка «Конструктор» ----------
+// ---------- "Builder" tab ----------
 function initBuilder(app) {
   const T = app.T, root = $('#tab-build');
   const draft = { title: 'Мой сценарий', duration: 12, start: 0, effects: [] };
@@ -147,7 +147,7 @@ function initBuilder(app) {
   };
 }
 
-// ---------- вкладка «Промт»: событие свободным текстом ----------
+// ---------- "Prompt" tab: events as free text ----------
 const EXAMPLES = [
   'Россия нападает на Украину',
   'США вводят пошлины 50% против Китая',
@@ -226,13 +226,15 @@ function initPrompt(app) {
   app.refreshImpact();
 }
 
-// ---------- вкладка «Данные» ----------
+// ---------- "Data" tab ----------
 function initSources(app) {
   const root = $('#tab-src');
-  const n = app.world.N, imp = app.world.countries.filter(c => c.imputed.length > 6).length;
+  const W = app.world, n = W.N, imp = W.countries.filter(c => c.imputed.length > 6).length;
+  const asOf = W.marketsAsOf ? new Date(W.marketsAsOf).toLocaleDateString('ru') : null;
   root.innerHTML = `
     <h3>Что внутри</h3>
     <p class="hint">${n} стран (194 независимых + Тайвань, Палестина и Косово). Зависимые территории (Гренландия, Пуэрто-Рико, Гонконг…) окрашены по своему государству; заштрихованы территории вне модели. Для каждой: ВВП, население, рост, инфляция, безработица, госдолг, торговля, военные расходы, неравенство, индикаторы управления (World Bank). Пропуски заполнены региональной медианой${imp ? ` (у ${imp} микрогосударств заполнено много полей)` : ''}. Обновить данные: <code>npm run data</code>.</p>
+    <p class="hint">Торговля: реальные потоки UN Comtrade у ${W.tradeCover} из ${n} стран${W.tradeCover < n ? ', у остальных — гравитационная оценка' : ''} (<code>npm run trade</code>). Курсы, прогнозы IMF, крипта и рынки${asOf ? ' — на ' + asOf : ' не загружены'} (<code>npm run markets</code>).</p>
     <h3>Как устроена модель</h3>
     <p class="hint"><b>Страна</b> — монетарная и фискальная политика (правило Тейлора, стимулы, долг), цена нефти, войны и союзы. Базовая траектория опирается на прогноз IMF WEO 2026–2031.<br>
     <b>Торговля</b> — реальные потоки UN Comtrade и спрос Армингтона: пошлины и санкции перестраивают закупки между поставщиками, торговля перетекает к третьим странам, пошлины разово поднимают цены.<br>

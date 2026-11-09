@@ -1,4 +1,4 @@
-// Быстрая проверка модели без UI: node scripts/headless.mjs [месяцев]
+// Quick model run without UI: node scripts/headless.mjs [months]
 import fs from 'node:fs';
 import { loadWorld } from './load.mjs';
 import { Sim } from '../src/sim/engine.js';

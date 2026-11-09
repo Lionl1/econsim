@@ -1,10 +1,10 @@
-// Фондовые рынки и крупные корпорации.
-// Индекс страны (лог): дрейф ≈ номинальный рост ВВП (прибыли) + премия, минус рост реальной ставки
-// (дюрация), плюс глобальный фактор риска (общий для всех рынков и крипты), свой шок (волатильность —
-// по годовым изменениям индексов S&P/World Bank) и шоки уровня ВВП с «рычагом» (войны, санкции, кризисы).
-// Эффект богатства: изменение за 12 мес. × капитализация/ВВП → рост ВВП.
-// Корпорации — агенты: стоимость = индексы рынков, где они зарабатывают, + фактор отрасли + потери от
-// барьеров на этих рынках; при сильных барьерах переносят часть производства в дружественные страны-хабы.
+// Stock markets and large corporations.
+// Country index (log): drift = nominal GDP growth (earnings) + premium, minus rising real rates (duration),
+// plus a global risk factor (shared by all markets and crypto), an own shock (volatility from annual changes
+// of S&P / World Bank indices) and leveraged GDP level shocks (wars, sanctions, crises); valuations revert to fundamentals.
+// Wealth effect: unexpected 12-month change x market cap / GDP -> GDP growth.
+// Corporations are agents: value = indices of the markets they earn in + sector factor + losses from barriers
+// in those markets and in their supply chain; under heavy barriers they move production to friendly hubs.
 import { P } from './params.js';
 import { gauss } from './rng.js';
 import { wedge } from './trade.js';
@@ -33,45 +33,45 @@ export function initEquity(sim) {
 
 export function stepEquity(sim) {
   const W = sim.world, N = W.N, S = sim.S, t = sim.t;
-  // общий фактор риска (≈15% годовых для мирового рынка) с редкими «хвостовыми» месяцами
+  // common risk factor (about 15% a year for the world market) with rare tail months
   const tail = gauss(sim.seed, 9995, t, 2) > 2.5 ? -0.06 : 0;
   sim.riskShock = 0.037 * gauss(sim.seed, 9995, t, 1) + tail;
-  // отрасли
+  // sectors
   const dOil = Math.log(sim.oil / (sim.oilPrev || sim.oil)); sim.oilPrev = sim.oil;
   const warShare = S.reduce((a, s) => a + (s.warCount ? s.gdp : 0), 0) / S.reduce((a, s) => a + s.gdp, 0);
   const twn = W.idx.get('TWN');
-  sim.chipShock = twn != null && S[twn].warCount ? 1 : 0;                 // война вокруг Тайваня — удар по чипам
+  sim.chipShock = twn != null && S[twn].warCount ? 1 : 0;                 // a war around Taiwan hits chips
   for (const k in sim.sector) {
     let d = 0.03 * gauss(sim.seed, 9994, t, k.length * 7 + k.charCodeAt(0));
     if (k === 'energy') d += 0.8 * dOil;
     if (k === 'defense') d += 0.02 * warShare;
-    if (k === 'semis' && sim.chipShock) d -= 0.1;       // пока идёт война: −10%/мес. к фактору отрасли (затухает к −1…−2 лог)
+    if (k === 'semis' && sim.chipShock) d -= 0.1;       // while the war lasts: -10%/month on the sector factor (settles around -1...-2 log)
     if (k === 'tech') d -= sim.chipShock ? 0.015 : 0;
     sim.sector[k] = clamp(sim.sector[k] + d + Math.log(1 + sim.sectorJump[k]) - 0.01 * sim.sector[k], -3, 3);
     sim.sectorJump[k] = 0;
   }
-  // страновые индексы
+  // country indices
   for (const s of S) {
     const c = W.countries[s.i];
     const beta = c.income === 'HIC' ? 1 : 1.2;
-    // история S&P у World Bank — в долларах: вычитаем колебания курса (их даёт fx.js) и общий фактор
+    // the World Bank S&P history is in USD: subtract FX swings (fx.js supplies those) and the common factor
     const fxv = c.currency.regime === 'float' ? (c.currency.fxVol || 0.08) : 0.02;
     const idio = Math.sqrt(Math.max((P.eqIdioK * s.eqVol) ** 2 - fxv ** 2 - (beta * 0.12) ** 2, 0.04 ** 2)) / Math.sqrt(12);
-    // реальная ставка по ожидаемой инфляции (якорю): скачок фактической инфляции не должен «поднимать» акции
+    // real rate on expected inflation (the anchor): an inflation spike must not lift stocks
     const rr = s.r - s.anchor, dRR = rr - s.rrPrev; s.rrPrev = rr;
-    // фундаментальный путь: номинальный рост прибылей (≈ номинальный ВВП) + премия, с ударами по уровню ВВП
+    // fundamental path: nominal earnings growth (~ nominal GDP) + premium, including GDP level shocks
     const fund = (s.gc + clamp(s.infl, -2, 40)) / 1200 + P.eqPremium - 0.002 + 2.5 * s.dLevel / 100;
     s.eqF += fund;
-    // оценки возвращаются к фундаменталу (Shiller: отклонения рассасываются за несколько лет)
+    // valuations revert to fundamentals (Shiller: deviations fade over several years)
     const r = fund - P.eqDuration * dRR / 100 + beta * sim.riskShock + P.eqNoise * idio * gauss(sim.seed, s.i, t, 130)
       + Math.log(1 + s.eqJump) - P.eqRevert * (s.eq - s.eqF);
     s.eqJump = 0;
     s.eq = clamp(s.eq + clamp(r, -0.6, 0.6), -4, 6);
     s.eqHist.push(s.eq); if (s.eqHist.length > 13) s.eqHist.shift();
-    s.eq12 = s.eq - s.eqHist[0] - (s.gc + clamp(s.infl, -2, 40)) / 100;   // неожиданная часть доходности за год
+    s.eq12 = s.eq - s.eqHist[0] - (s.gc + clamp(s.infl, -2, 40)) / 100;   // unexpected part of the 12-month return
     s.fdi *= 0.96;
   }
-  // корпорации
+  // corporations
   for (const co of sim.corps) {
     const hq = co.hq;
     let foreignRet = 0, pen = 0;
@@ -80,13 +80,13 @@ export function stepEquity(sim) {
       foreignRet += w * S[j].eq;
       pen += w * Math.min(1, wedge(sim, j, hq) * (co.relocated ? 0.4 : 1));
     }
-    // производство за рубежом: барьеры между страной производства и домашним рынком (пошлины на свой же импорт)
+    // production abroad: barriers between the production country and the home market (tariffs on its own imports)
     const pj = co.relocated ?? (co.prod ? W.idx.get(co.prod[0]) : null);
     const prodPen = pj != null && pj !== hq ? co.prod?.[1] * Math.min(1, wedge(sim, hq, pj)) * (1 - co.foreign * 0.5) : 0;
     co.barrier += 0.1 * (-0.8 * co.foreign * pen - 0.6 * (prodPen || 0) - co.barrier);
-    co.own = (co.own || 0) * 0.995;   // разовые новости компании постепенно «растворяются» в рынке
+    co.own = (co.own || 0) * 0.995;   // one-off company news gradually fades into the market
     co.v = (1 - co.foreign) * S[hq].eq + co.foreign * foreignRet + (sim.sector[co.sector] || 0) + co.barrier + co.own;
-    // решение: перенести производство из-под барьеров
+    // decision: move production away from barriers
     if (t >= co.nextDecide) {
       co.nextDecide = t + 6;
       if (!co.relocated && co.barrier < -0.05 && ['semis', 'tech', 'auto', 'consumer', 'industrial'].includes(co.sector)) {
@@ -94,7 +94,7 @@ export function stepEquity(sim) {
         let best = null, bestV = -1e9;
         for (const iso of HUBS) {
           const j = W.idx.get(iso); if (j == null || j === hq || j === from) continue;
-          // отношения с домашней страной, барьеры, мир и стабильность, масштаб хаба (ВВП, рабочая сила), «скопление» переносов
+          // relations with home, barriers, peace and stability, hub size (GDP, labor force), crowding by earlier moves
           const busy = sim.corps.filter(o => o.relocated === j).length;
           const v = sim.R[hq * N + j] - 2 * wedge(sim, hq, j) - S[j].warCount - (1 - S[j].stab)
             + 0.25 * Math.log(S[j].gdp / 2e11) + 0.15 * Math.log(S[j].pop / 5e7) - 0.25 * busy + 0.3 * sim.rnd(j, 140 + co.k % 7);
@@ -111,13 +111,13 @@ export function stepEquity(sim) {
   }
 }
 
-// вклад рынков в рост ВВП (п.п. годовых): эффект богатства + приток инвестиций от переноса производства
+// market contribution to GDP growth (pp a year): wealth effect + investment from relocated production
 export function equityGrowth(sim, s) {
   return P.eqWealth * s.mcapGdp * clamp(s.eq12, -1, 1) * 100 + s.fdi
     - (sim.chipShock ? (sim.world.countries[s.i].income === 'HIC' ? 0.8 : 0.4) : 0);
 }
 
-export function worldEquity(sim) {   // мировой индекс, взвешенный капитализацией в долларах
+export function worldEquity(sim) {   // world index weighted by USD market cap
   let w = 0, v = 0;
   for (const s of sim.S) { const m = s.mcapGdp * s.gdp; w += m; v += m * (s.eq - s.e); }
   return w ? v / w : 0;

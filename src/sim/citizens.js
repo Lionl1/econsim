@@ -1,9 +1,9 @@
-// Агенты-граждане: каждый агент представляет долю населения страны (pop / n).
-// Они теряют работу, реагируют на инфляцию и рост, протестуют, эмигрируют и голосуют (через настроения).
+// Citizen agents: each agent stands for a share of the population (pop / n).
+// They lose jobs, react to inflation and growth, protest, emigrate and vote (through sentiment).
 import { hash, gauss } from './rng.js';
 
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
-// id агента-гражданина: отдельное от индексов стран пространство, чтобы не делить с ними случайные числа
+// citizen agent id: a separate space from country indices so they never share random numbers
 const cid = (i, k) => 1_000_000 + i * 1000 + k;
 
 export function initCitizens(sim, s, c) {
@@ -25,7 +25,7 @@ export function updateCitizens(sim, s, c) {
   let sum = 0, prot = 0;
   for (let k = 0; k < n; k++) {
     const id = cid(i, k);
-    // рынок труда: часть агентов перебрасывается между занятостью и безработицей
+    // labor market: some agents move between employment and unemployment
     if (hash(sim.seed, id, t, 72) < 0.12) cit.emp[k] = hash(sim.seed, id, t, 73) < clamp(ur * (1.7 - 1.4 * cit.inc[k]), 0, 0.92) ? 0 : 1;
     const target = s.sentBase
       + 0.035 * (s.gc - s.gpot) - 0.012 * clamp(s.infl - s.infl0, -8, 40) - 0.04 * (s.unemp - s.unemp0)
@@ -36,7 +36,7 @@ export function updateCitizens(sim, s, c) {
     sum += cit.sent[k];
     cit.prot[k] = cit.sent[k] < thr && hash(sim.seed, id, t, 75) < 0.25 ? 1 : 0;
     prot += cit.prot[k];
-    // эмиграция: недовольные уезжают в более богатые/стабильные страны-партнёры
+    // emigration: unhappy agents leave for richer / more stable partner countries
     if (cit.sent[k] < 0.26 && hash(sim.seed, id, t, 76) < 0.005) migrate(sim, s, c, id);
   }
   s.sent = sum / n; s.protest = prot / n;
@@ -44,7 +44,7 @@ export function updateCitizens(sim, s, c) {
   if (s.protest > 0.22 && !s.protestFlag) { s.protestFlag = true; sim.log('protest', `✊ Массовые протесты: ${c.nameRu}`, [i], 3); }
   else if (s.protest < 0.1) s.protestFlag = false;
 
-  // политика: выборы в демократиях, перевороты в авторитарных режимах
+  // politics: elections in democracies, coups in authoritarian regimes
   if (s.dem > 0.5 && t >= s.nextElection) {
     s.nextElection = t + 48 + Math.floor(24 * sim.rnd(i, 77));
     const pLoss = clamp(0.5 - 3 * (s.sent - s.sentBase), 0.1, 0.95);

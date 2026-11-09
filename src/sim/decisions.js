@@ -1,17 +1,17 @@
-// Агенты-правительства: каждая страна принимает решения по фискальной/денежной политике, торговле,
-// дипломатии, военным расходам, санкциям, помощи и войне. Решения зависят от «характера» (hawk, coop, protect),
-// типа режима и текущей ситуации — так, как вели бы себя правительства.
+// Government agents: each country decides on fiscal/monetary policy, trade, diplomacy, military spending,
+// sanctions, aid and war. Decisions depend on its "character" (hawk, coop, protect), regime type
+// and the current situation, the way governments would behave.
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 
 export function decide(sim, i) {
   const W = sim.world, N = W.N, s = sim.S[i], c = W.countries[i], t = sim.t;
 
-  // --- денежная политика (каждый месяц): правило Тейлора с шагом 0.25 п.п. ---
+  // --- monetary policy (monthly): Taylor rule, moves capped at 0.5 pp ---
   const gap = s.gc - s.gpot;
   const rT = clamp(s.r0 + 1.3 * (s.infl - s.infl0) + 0.4 * gap, 0, 45);
   s.r += clamp(rT - s.r, -0.5, 0.5);
 
-  // --- военные расходы: реакция на угрозу ---
+  // --- military spending: response to threats ---
   let threat = 0;
   for (const j of W.partners[i].slice(0, 15)) {
     if (W.border[i * N + j] || W.dist[i * N + j] < 2500) threat += Math.max(0, -sim.R[i * N + j] - 0.2);
@@ -21,17 +21,16 @@ export function decide(sim, i) {
   s.mil += 0.08 * (milT - s.mil);
 
   if ((t + i) % 3 !== 0) return;
-  s.lastDecide = t;
 
-  // --- фискальная политика ---
+  // --- fiscal policy ---
   let fT = 0;
   if (gap < -1) fT = clamp(0.7 * -gap, 0, 5);
   else if (gap > 1.5) fT = -clamp(0.3 * gap, 0, 1.5);
   if (s.debt > 100) fT = Math.min(fT, 0) - clamp((s.debt - 100) / 60, 0, 2.5);
-  if (c.ge < 0.35) fT *= 0.5;                             // слабое государство хуже стимулирует
+  if (c.ge < 0.35) fT *= 0.5;                             // weak states stimulate less effectively
   s.f += clamp(fT - s.f, -0.4, 0.4);
 
-  // --- тарифы: ответные меры и протекционизм ---
+  // --- tariffs: retaliation and protectionism ---
   for (const j of W.partners[i].slice(0, 20)) {
     const k = i * N + j, kr = j * N + i;
     if (sim.lockedT.has(k)) continue;
@@ -44,11 +43,11 @@ export function decide(sim, i) {
       sim.T[k] = mine + 10;
       sim.log('tariff', `🛃 Пошлины +10% (протекционизм): ${c.nameRu} → ${W.countries[j].nameRu}`, [i, j], 2);
     } else if (mine > 0 && rel > 0.3 && theirs <= mine) {
-      sim.T[k] = Math.max(0, mine - 2 * (0.5 + s.coop));      // разрядка
+      sim.T[k] = Math.max(0, mine - 2 * (0.5 + s.coop));      // de-escalation
     }
   }
 
-  // --- санкции: снятие и введение ---
+  // --- sanctions: lifting and imposing ---
   for (const j of W.partners[i].slice(0, 30)) {
     const k = i * N + j;
     if (sim.San[k] && !sim.lockedSan.has(k) && sim.R[k] > -0.2 && sim.rnd(i, 30 + (j % 9), t) < 0.06 && !sim.warMat[k]) {
@@ -66,7 +65,7 @@ export function decide(sim, i) {
     }
   }
 
-  // --- помощь пострадавшим друзьям ---
+  // --- aid to friends in trouble ---
   if (c.gdpPc > 20000 && s.coop > 0.5 && s.debt < 110 && sim.rnd(i, 50, t) < 0.15) {
     let best = -1, bestV = 0;
     for (const j of W.partners[i].slice(0, 20)) {
@@ -83,7 +82,7 @@ export function decide(sim, i) {
     }
   }
 
-  // --- война ---
+  // --- war ---
   if (s.warCount >= 1 || t < 3) return;
   let best = -1, bestScore = 0;
   const P0 = sim.milPower(i);

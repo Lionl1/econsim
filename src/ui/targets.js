@@ -1,11 +1,11 @@
-// Справочник целей для сценариев (селекторы) и описания эффектов.
+// Scenario target selectors and effect descriptions.
 import { BLOC_NAMES } from '../sim/blocs.js';
 import { SHOCK_VARS } from '../sim/scenarios.js';
 import { SECTORS as SECTOR_NAMES } from '../sim/equity.js';
 
 const REGIONS = { Europe: 'Европа', Asia: 'Азия', Africa: 'Африка', Americas: 'Америка', Oceania: 'Океания' };
 
-// экранирование для вставки пользовательского текста в innerHTML
+// escaping for user text inserted into innerHTML
 export const esc = s => String(s).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
 
 export function buildTargets(world) {

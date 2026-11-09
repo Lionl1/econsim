@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Двусторонняя торговля из UN Comtrade (публичный preview API, без ключа) -> data/trade_raw.json -> public/data/trade.json
+"""Bilateral trade from UN Comtrade (public preview API, no key) -> data/trade_raw.json -> public/data/trade.json
 
-Для каждой страны берём импорт (M) и экспорт (X) товаров по партнёрам, HS TOTAL, за последний доступный год.
-Поток i->j оцениваем по отчёту импортёра j (CIF, точнее), иначе по отчёту экспортёра i ("зеркальные" данные).
-Так покрываются и страны, которые сами не отчитываются (Тайвань, КНДР, ...).
-Запуск: python3 scripts/fetch_trade.py            — докачать недостающее и собрать trade.json
-        python3 scripts/fetch_trade.py --build    — только собрать trade.json из уже скачанного
+For every country we fetch goods imports (M) and exports (X) by partner, HS TOTAL, for the latest available year.
+A flow i->j comes from the importer j's report (CIF, more reliable), otherwise from the exporter i's report (mirror data).
+This also covers countries that do not report themselves (Taiwan, North Korea, ...).
+Usage: python3 scripts/fetch_trade.py            — download what is missing and build trade.json (slow: ~20 s per request)
+       python3 scripts/fetch_trade.py --build    — only rebuild trade.json from the downloaded cache
 """
 import json, sys, time, urllib.request
 from pathlib import Path
@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parent.parent
 RAW = ROOT / "data" / "trade_raw.json"
 OUT = ROOT / "public" / "data" / "trade.json"
 YEARS = ["2023", "2022"]
-TWN_CODE = 490          # «Other Asia, nes» в Comtrade = Тайвань
+TWN_CODE = 490          # "Other Asia, nes" in Comtrade = Taiwan
 API = "https://comtradeapi.un.org/public/v1/preview/C/A/HS?reporterCode={r}&period={y}&partnerCode=&cmdCode=TOTAL&flowCode={f}&maxRecords=500"
 
 def get(url, tries=4):
@@ -61,7 +61,7 @@ def build():
     countries = json.loads((ROOT / "public/data/countries.json").read_text())
     isos = [c["iso3"] for c in countries]; ours = set(isos)
     c2i = raw["code2iso"]
-    X = {}   # (exporter, importer) -> $; сначала отчёт импортёра, затем зеркальный отчёт экспортёра
+    X = {}   # (exporter, importer) -> $; importer report first, exporter mirror report as fallback
     src = {}
     for key, rec in raw["flows"].items():
         iso, f = key.split(":")
@@ -75,7 +75,7 @@ def build():
                 X[(iso, p)] = v; src[(iso, p)] = "X"
     exp = {i: {} for i in isos}
     for (a, b), v in X.items():
-        exp[a][b] = round(v / 1e6, 2)           # млн $
+        exp[a][b] = round(v / 1e6, 2)           # USD mn
     reported = sorted({k.split(":")[0] for k, r in raw["flows"].items() if r["rows"]})
     out = {"source": "UN Comtrade (HS TOTAL, goods), importer-reported flows with exporter mirror fallback",
            "years": sorted({r["year"] for r in raw["flows"].values() if r["year"]}), "unit": "USD mn", "reporters": reported, "exports": exp}

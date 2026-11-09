@@ -1,4 +1,4 @@
-// Правый инспектор: мир или выбранная страна, по вкладкам.
+// Right inspector: the world or the selected country, in tabs.
 import { lineChart } from './charts.js';
 import { fmtMoney, fmtNum } from './colors.js';
 import { targetSelectHtml, esc } from './targets.js';
@@ -161,9 +161,9 @@ export class RightPanel {
         <div class="hint" style="margin-top:4px">Базовый мир модели опирается на эти прогнозы. В паритетах покупательной способности IMF даёт ${Object.values(world.worldForecastPPP || {}).slice(0, 1).map(v => v + '%').join('')} на 2026 г.</div>`;
     } else {
       const m = this.rkMode, has = sim.scenarios.length > 0;
-      // рост — за последние 12 мес. (мгновенный месячный темп слишком шумный), до года — в годовом выражении с начала
+      // growth over the last 12 months (the instant monthly rate is too noisy); annualized since start in year one
       const g12 = s => { const h = s.hist.gdp, n = h.length - 1, k = Math.min(12, n); return k > 0 ? (Math.pow(h[n] / h[n - k], 12 / k) - 1) * 100 : s.g; };
-      const cur = s => (1 / Math.exp(s.e) - 1) * 100;                      // стоимость валюты в $, %
+      const cur = s => (1 / Math.exp(s.e) - 1) * 100;                      // currency value in USD, %
       const val = s => m === 'g' ? g12(s) : m === 'dGdp' ? sim.metric(s.i, 'dGdp', base) : m === 'fx' ? cur(s) : pc(s.eq - s.e);
       const sub = s => m === 'eq' ? `в местной ${pc(s.eq) > 0 ? '+' : ''}${pc(s.eq).toFixed(0)}%` : m === 'fx' ? esc(world.countries[s.i].currency.code) : m === 'g' ? fmtMoney(s.gdp) : '';
       const arr = sim.S.filter(s => s.gdp > 1e10 && (m !== 'eq' || s.mcapGdp > 0.1) && (m !== 'fx' || (s.regime !== 'anchor' && s.regime !== 'union' && s.regime !== 'dollarized')))

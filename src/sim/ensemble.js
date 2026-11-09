@@ -1,9 +1,9 @@
-// Ансамбль прогонов: сценарий vs базовый мир на многих сидах. Три слоя неопределённости:
-//  1) случайные события (шоки роста, инфляции, курсов, рынков, решения агентов) — разные сиды;
-//  2) параметры модели — разыгрываются в диапазонах оценок из литературы (PRANGES), как выборки из
-//     апостериора в байесовских DSGE-моделях ФРС/ЕЦБ;
-//  3) величина события — логнормальный множитель с медианой 1 (σ=0.35: шок «−6%» ≈ от −3.4% до −10.6% в 80% случаев).
-// Базовый мир привязан к прогнозу IMF WEO; коридор базового роста сравнивается с ним (как фан-чарты IMF/Банка Англии).
+// Ensemble: scenario vs baseline over many seeds. Three layers of uncertainty:
+//  1) random events (growth, inflation, FX and market shocks, agent decisions): different seeds;
+//  2) model parameters: drawn within ranges of literature estimates (PRANGES), like posterior draws
+//     in the Bayesian DSGE models of the Fed/ECB;
+//  3) event size: lognormal multiplier with median 1 (sigma=0.35: a "-6%" shock is -3.4%...-10.6% in 80% of draws).
+// The baseline follows the IMF WEO forecast; its growth band is compared with it (like IMF / Bank of England fan charts).
 import { Sim } from './engine.js';
 import { P, PRANGES } from './params.js';
 import { hash, gauss } from './rng.js';
@@ -17,7 +17,7 @@ export function runEnsemble(world, scenarios, { seeds = 20, months = 60, seed0 =
   const keys = ['gdp', 'infl', 'unemp', 'wars', 'eq', 'btc', 'trade'];
   const paths = Object.fromEntries(keys.map(k => [k, []]));
   const finalC = Array.from({ length: N }, () => []), fxC = Array.from({ length: N }, () => []);
-  const warStarts = [], baseGrowth = [];               // [seed][год] — рост мира в базовом прогоне, %
+  const warStarts = [], baseGrowth = [];               // [seed][year]: world growth in the baseline run, %
   try {
     for (let k = 0; k < seeds; k++) {
       const seed = seed0 + k;
@@ -44,7 +44,7 @@ export function runEnsemble(world, scenarios, { seeds = 20, months = 60, seed0 =
       }
       for (const key of keys) paths[key].push(Pth[key]);
       for (let i = 0; i < N; i++) { finalC[i].push((sim.S[i].gdp / base.S[i].gdp - 1) * 100); fxC[i].push((Math.exp(sim.S[i].e - base.S[i].e) - 1) * 100); }
-      warStarts.push(sim.agentWars - base.agentWars);   // войны, объявленные агентами, сверх базы (без войн самого сценария)
+      warStarts.push(sim.agentWars - base.agentWars);   // wars declared by agents beyond the baseline (excluding the scenario's own wars)
       baseGrowth.push(bg);
       onProgress?.((k + 1) / seeds);
     }

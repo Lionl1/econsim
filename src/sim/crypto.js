@@ -1,7 +1,7 @@
-// Крипта: глобальная цена BTC (лог-доходность с «тяжёлыми хвостами», связана с фактором рисковых активов
-// и ставкой ФРС) и доля населения с криптой в каждой стране. Открытых данных по владению криптой нет,
-// поэтому доля — прокси: интернет × (базовый уровень + инфляция + доход), растёт при девальвации и инфляции.
-// Эффекты на экономику малы (эффект богатства и настроения), как и в реальности.
+// Crypto: a global BTC price (fat-tailed log returns, tied to the risk-asset factor and the Fed rate)
+// and the share of people holding crypto in each country. There is no open data on crypto ownership,
+// so the share is a proxy: internet x (base level + inflation + income); it rises with depreciation and inflation.
+// Macro effects are small (wealth and sentiment), as in reality.
 import { P } from './params.js';
 import { gauss } from './rng.js';
 
@@ -21,7 +21,7 @@ export function initCrypto(sim) {
 
 export function stepCrypto(sim) {
   const t = sim.t, us = sim.S[sim.usa];
-  // t-распределение с 4 степенями свободы: g / sqrt(chi2_4 / 4)
+  // Student t with 4 degrees of freedom: g / sqrt(chi2_4 / 4)
   let chi = 0; for (let k = 0; k < 4; k++) chi += gauss(sim.seed, 9996, t, 10 + k) ** 2;
   const tnoise = gauss(sim.seed, 9996, t, 1) / Math.sqrt(chi / 4) * Math.sqrt(0.5);
   const sigma = P.btcVol / Math.sqrt(12);
@@ -30,7 +30,7 @@ export function stepCrypto(sim) {
   sim.btc = Math.max(500, sim.btc * Math.exp(clamp(r, -0.6, 0.8)) * (1 + sim.btcJump));
   sim.btcJump = 0;
   sim.btcHist.push(sim.btc); if (sim.btcHist.length > 13) sim.btcHist.shift();
-  const mom = Math.log(sim.btc / sim.btcHist[0]);                // доходность за 12 мес.
+  const mom = Math.log(sim.btc / sim.btcHist[0]);                // 12-month return
   sim.btcMom = mom;
   for (const s of sim.S) {
     const target = s.cryptoBan ? s.crypto0 * 0.25

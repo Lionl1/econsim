@@ -1,15 +1,15 @@
-// Библиотека готовых сценариев. Сценарий = набор эффектов во времени.
-// Селекторы целей: 'all', 'iso:USA', 'region:Europe', 'subregion:...', 'bloc:NATO', 'oilExp', 'energyImp', 'income:HIC'
-// Виды эффектов:
+// Preset scenario library. A scenario is a set of effects over time.
+// Target selectors: 'all', 'iso:USA', 'region:Europe', 'subregion:...', 'bloc:NATO', 'oilExp', 'energyImp', 'income:HIC'
+// Effect kinds:
 //   shock    {targets, var: growth|infl|unemp|stab|sent|mil|fiscal|level|pop|debt, value, scale?: urban|openness|internet}
-//   oil      {value}   — надбавка к цене нефти (1.0 = +100%)
-//   tariff   {from, to, value}   — пошлина в %
+//   oil      {value}   — oil price add-on (1.0 = +100%)
+//   tariff   {from, to, value}   — tariff, %
 //   sanction {from, to}
 //   war      {a, b}
 //   relation {a, b, value}
-//   crypto   {value}   — разовый скачок цены биткоина (−0.7 = обвал на 70%)
-//   sector   {sector, value} — разовый скачок отрасли на фондовом рынке, % (semis, tech, energy, finance, …)
-//   peace    {a}       — мир внутри группы: конец войн между участниками, снятие взаимных санкций/пошлин, запрет новых войн на срок
+//   crypto   {value}   — one-off bitcoin price jump (−0.7 = a 70% crash)
+//   sector   {sector, value} — one-off stock market sector move, % (semis, tech, energy, finance, …)
+//   peace    {a}       — peace within a group: wars between members end, mutual sanctions/tariffs are lifted, no new wars while active
 const GULF = ['iso:IRN', 'iso:SAU', 'iso:ARE', 'iso:KWT', 'iso:QAT', 'iso:BHR', 'iso:OMN', 'iso:IRQ'];
 const FRAGILE = ['region:Africa', 'subregion:Southern Asia'];
 

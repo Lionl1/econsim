@@ -10,7 +10,9 @@ export function decide(sim, i) {
   const gap = s.gc - s.gpot;
   // Taylor (1993) around the current inflation anchor, not the starting inflation: when the anchor moves
   // (e.g. disinflation along the IMF path) the neutral rate moves with it; zero lower bound
-  const rT = clamp(s.rrN + s.anchor + 1.5 * (s.infl - s.anchor) + 0.5 * gap, 0, 60);
+  // reacts to core inflation: central banks look through noise and one-off price jumps; reacting to the right-skewed
+  // headline made the rate lag behind spikes and kept policy too loose on average
+  const rT = clamp(s.rrN + s.anchor + 1.5 * (s.inflCore - s.anchor) + 0.5 * gap, 0, 60);
   s.r += clamp(rT - s.r, -0.5, 0.5);
 
   // --- military spending: response to threats ---

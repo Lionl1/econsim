@@ -10,6 +10,7 @@
     "data": "python3 scripts/fetch_data.py",
     "calibrate": "node scripts/calibrate.mjs",
     "backtest": "node scripts/backtest.mjs",
+    "ensemble": "node scripts/ensemble.mjs",
     "history": "python3 scripts/fetch_history.py",
     "sim": "node scripts/headless.mjs"
   },

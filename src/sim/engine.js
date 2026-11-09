@@ -27,6 +27,7 @@ export class Sim {
     this.R = Float32Array.from(W.base);        // динамические отношения
     this.aid = new Float32Array(N * N);        // «память» о помощи, затухает
     this.wars = []; this.truce = new Map(); this.peace = [];
+    this.agentWars = 0;                        // войн, объявленных агентами (не сценариями)
     // пошлины/санкции, заданные сценариями: k -> { base, claims: Map(scId -> значение) }; пока есть claims, агенты их не трогают
     this.lockedSan = new Map(); this.lockedT = new Map();
     this.events = []; this.eventSeq = 0;
@@ -221,6 +222,7 @@ export class Sim {
     const N = this.world.N;
     const w = { id: ++this.eventSeq + 100000, a: [...A], b: [...B], start: this.t, intensity: 0.5 + 0.4 * this.rnd(A[0], 91),
       forcedEnd: opts.forcedEnd ?? null, scenario: opts.scenario ?? null, primaryA: A[0], primaryB: B[0] };
+    if (opts.scenario == null) this.agentWars++;
     if (!opts.noAllies) this.recruitAllies(w);
     this.wars.push(w);
     this.rebuildWarMat();

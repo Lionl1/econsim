@@ -4,11 +4,15 @@ import { resolve } from './world.js';
 import { DEFENSE_BLOCS, BLOCS } from './blocs.js';
 import { initCitizens, updateCitizens } from './citizens.js';
 import { decide } from './decisions.js';
+import { initTrade, stepTrade } from './trade.js';
+import { initFx, stepFx, fxLevel } from './fx.js';
+import { initCrypto, stepCrypto } from './crypto.js';
+import { initEquity, stepEquity, equityGrowth, worldEquity } from './equity.js';
 
 export const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 const HIST = 900;
-// Калибруемые параметры (scripts/calibrate.mjs)
-export const P = { gNoise: 8.5, cycAmp: 0.6, cycNoise: 8, inflNoise: 1.5, gAdj: 0.5, inflAdj: 0.07, okun: 0.32, cycPers: 0.8, volLIC: 1.3, volHIC: 0.95, anchorK: 0.85, inflScale0: 0.3, inflScaleK: 0.28, oilInfl: 10 };
+import { P } from './params.js';
+export { P };
 
 export class Sim {
   constructor(world, { seed = 1, baseline = false } = {}) {
@@ -36,6 +40,8 @@ export class Sim {
     this.prevG = new Float32Array(N);
     this.S = W.countries.map(c => this.initCountry(c));
     this.S.forEach((s, i) => { this.prevG[i] = s.g; });
+    initFx(this); initCrypto(this); initTrade(this); initEquity(this);
+    this.wh.btc = []; this.wh.eq = []; this.wh.trade = []; this.wh.gdpUsd = [];
     this.aggregate();
     this.recordHistory();
   }
@@ -54,8 +60,8 @@ export class Sim {
     const unemp = clamp(c.unemp, 0.5, 40);
     const hawk = clamp(0.2 + 0.05 * c.mil + 0.3 * (1 - c.dem) + 0.25 * (hash(this.seed, i, 7777, 1) - 0.5) + (c.nuclear ? 0.05 : 0), 0.02, 0.98);
     const s = {
-      i, gdp: c.gdp, pop: c.pop, gpot, gc: clamp(c.growth, -4, 9), g: clamp(c.growth, -4, 9),
-      infl0: infl, infl, anchor, unemp0: unemp, unemp, uN: unemp,
+      i, gdp: c.gdp, gdp0: c.gdp, pop: c.pop, gpot, gc: clamp(c.growth, -4, 9), g: clamp(c.growth, -4, 9),
+      infl0: infl, infl, inflCore: infl, inflPL: 0, tarPL: 0, tarPLslow: 0, anchor, dLevel: 0, defaultT: 0, unemp0: unemp, unemp, uN: unemp,
       debt, debt0: debt, deficit0: debt * (gpot + anchor) / 100,
       stab0, stab: stab0, sent: 0.5, sentBase: clamp(0.38 + 0.4 * stab0 + 0.06 * c.dem, 0.35, 0.85), protest: 0,
       misery0: Math.min(infl, 60) + unemp,
@@ -68,13 +74,13 @@ export class Sim {
       nextElection: Math.floor(12 + 48 * hash(this.seed, i, 7777, 4)),
       protestFlag: false,
       mods: this.blankMods(),
-      hist: { gdp: [], g: [], infl: [], unemp: [], stab: [], sent: [], debt: [] },
+      hist: { gdp: [], g: [], infl: [], unemp: [], stab: [], sent: [], debt: [], fx: [], eq: [] },
     };
     initCitizens(this, s, c);
     return s;
   }
 
-  blankMods() { return { g: 0, infl: 0, unemp: 0, stab: 0, sent: 0, mil: 0, f: 0 }; }
+  blankMods() { return { g: 0, infl: 0, unemp: 0, stab: 0, sent: 0, mil: 0, f: 0, fx: 0 }; }
 
   // ---------- журнал ----------
   log(kind, text, ids = [], sev = 1) {
@@ -130,6 +136,23 @@ export class Sim {
           if (a === b) continue;
           this.R[a * N + b] = this.R[b * N + a] = clamp(this.R[a * N + b] + e.value, -1, 1);
         }
+      } else if (e.kind === 'crypto') {
+        this.btcJump = (1 + this.btcJump) * (1 + e.value) - 1;          // разовый скачок цены биткоина
+        this.log('crypto', `₿ Биткоин ${e.value > 0 ? '+' : ''}${Math.round(e.value * 100)}%`, [], 3);
+      } else if (e.kind === 'company' || e.kind === 'relocate') {
+        const co = this.corps.find(x => x.name === e.name);
+        if (co && e.kind === 'company') co.own = (co.own || 0) + Math.log(Math.max(0.05, 1 + e.value / 100));
+        if (co && e.kind === 'relocate') {
+          const j = this.world.idx.get(e.to);
+          if (j != null) {
+            const from = co.prod ? this.world.idx.get(co.prod[0]) : co.hq;
+            co.relocated = j; this.S[j].fdi += clamp(co.mcap / this.S[j].gdp * 0.08, 0.1, 1.5);
+            if (from != null && from !== co.hq) this.S[from].fdi -= clamp(co.mcap / this.S[from].gdp * 0.04, 0.05, 0.8);
+            this.log('corp', `🏭 ${co.name} переносит производство: ${this.nm(from ?? co.hq)} → ${this.nm(j)}`, [from ?? co.hq, j], 3);
+          }
+        }
+      } else if (e.kind === 'sector') {
+        this.sectorJump[e.sector] = (1 + (this.sectorJump[e.sector] || 0)) * (1 + e.value / 100) - 1;
       } else if (e.kind === 'peace') {
         // мирное соглашение внутри группы: войны между участниками заканчиваются, взаимные санкции и пошлины
         // (не заданные другими сценариями) снимаются; пока сценарий идёт, участники не воюют друг с другом
@@ -171,7 +194,7 @@ export class Sim {
   }
 
   applyScenarios() {
-    for (const s of this.S) s.mods = this.blankMods(), s.pulse = 0;
+    for (const s of this.S) s.mods = this.blankMods(), s.pulse = 0, s.cryptoBan = 0;
     this.oilShock = 0;
     this.peace = [];   // группы стран под действующим мирным соглашением (заполняется ниже)
     for (const sc of this.scenarios) {
@@ -200,6 +223,9 @@ export class Sim {
               case 'level': if (onceActive) s.pulse += v / once; break;       // % ВВП за весь срок
               case 'pop': if (onceActive) s.pop *= 1 + v / once / 100; break;
               case 'debt': if (onceActive) s.debt += v / once; break;
+              case 'fx': s.mods.fx += v; break;                               // % девальвации к доллару (пока действует)
+              case 'equity': if (this.t === t0) s.eqJump = (1 + s.eqJump) * (1 + v / 100) - 1; break;   // разовый обвал/рост рынка, %
+              case 'cryptoBan': s.cryptoBan = 1; break;
             }
           }
         }
@@ -318,26 +344,36 @@ export class Sim {
     this.cyc = P.cycPers * this.cyc + P.cycNoise * gauss(this.seed, 9998, t, 2);
     const p = this.oil;
 
+    stepTrade(this);
+    const year = this.startYear + Math.floor(t / 12);
+
     // макро-обновление стран
     const newG = new Float32Array(N);
     for (let i = 0; i < N; i++) {
       const s = S[i], c = W.countries[i], m = s.mods;
-      let foreignG = 0, foreignBase = 0, expLost = 0, impTar = 0, sanc = 0;
+      // прогноз IMF WEO задаёт базовую траекторию: потенциальный рост, якорь инфляции, естественная безработица
+      const fc = c.forecast;
+      if (fc) {
+        const fy = Math.min(year, 2031);
+        if (fc.growth?.[fy] != null) s.gpot = clamp(fc.growth[fy], -8, 12);
+        if (fc.infl?.[fy] != null) s.anchor += 0.05 * (clamp(fc.infl[fy], 0.5, 80) - s.anchor);
+        if (fc.unemp?.[fy] != null) s.uN += 0.05 * (clamp(fc.unemp[fy], 0.5, 40) - s.uN);
+      }
+      let foreignG = 0, foreignBase = 0, sanc = 0;
       for (const j of W.partners[i]) {
-        const w = W.share[i * N + j];
+        const w = W.xs[i * N + j];                                   // спрос партнёров — по реальной структуре экспорта
         foreignG += w * this.prevG[j]; foreignBase += w * S[j].gpot;
-        const sanEither = this.San[j * N + i] | this.San[i * N + j];
-        const war = this.warMat[i * N + j];
-        expLost += w * Math.min(0.9, 0.012 * (this.T[j * N + i] + 40 * sanEither + 100 * war));
-        impTar += w * (this.T[i * N + j] + 40 * sanEither + 100 * war);
-        sanc += w * this.San[j * N + i];
+        sanc += W.share[i * N + j] * this.San[j * N + i];
       }
       s.sanctionPressure = Math.min(1, sanc * 2.5);
-      // уровневые эффекты политики (тарифы, санкции, нестабильность)
-      const levelT = -70 * (c.exports / 100) * expLost - 0.15 * (c.imports / 100) * impTar - Math.max(0, 0.3 - s.stab) * 40;
+      if (s.defaultT > 0) s.defaultT--;
+      // уровневые эффекты: торговля (экспорт к контрфактуалу, издержки пошлин), нестабильность, реальный курс
+      const levelT = P.tradeKappa * c.exports * (s.expIdx - 1) - P.tariffCost * c.imports * s.tauImp
+        - Math.max(0, 0.3 - s.stab) * 40 + fxLevel(s, c);
       const prevLevel = s.level;
       s.level += 0.08 * (levelT - s.level);
       const dLevel = s.level - prevLevel + s.pulse;                   // % за месяц
+      s.dLevel = dLevel;
       // экзогенные факторы
       const e = clamp(c.energyImp / 100, -1, 1);
       const oilEff = -1.8 * (p - 1) * e;
@@ -345,7 +381,7 @@ export class Sim {
       const fEff = s.f + m.f;
       const milExtra = s.mil - s.mil0;
       const tight = s.r - (s.r0 + (s.infl - s.infl0));   // жёсткость политики относительно «нейтральной» траектории
-      const target = s.gpot + 0.5 * fEff + 0.1 * milExtra - 0.25 * tight + spill + oilEff + m.g + P.cycAmp * this.cyc * c.openness
+      const target = s.gpot + P.fiscalMult * fEff + equityGrowth(this, s) + 2 * s.crypto * clamp(this.btcMom || 0, -1, 1) + 0.1 * milExtra - 0.25 * tight + spill + oilEff + m.g + P.cycAmp * this.cyc * c.openness
         + P.gNoise * (c.income === 'LIC' ? P.volLIC : c.income === 'HIC' ? P.volHIC : 1) * this.gs(i, 1);
       s.gc += P.gAdj * (target - s.gc);
       s.g = s.gc + 12 * dLevel;
@@ -353,11 +389,17 @@ export class Sim {
       s.gdp *= 1 + s.gc / 1200 + dLevel / 100;
       s.pop *= 1 + s.popGrowth / 1200;
 
-      // инфляция
+      // инфляция = базовая + однократные сдвиги уровня цен (пошлины и курс), которые держатся в годовой инфляции ~год
       const oilInfl = P.oilInfl * (p - 1) * Math.max(e, 0);
-      const tarInfl = 0.15 * (c.imports / 100) * impTar * 0.5;
-      const inflT = s.anchor + 0.25 * (s.gc - s.gpot) + 0.35 * fEff + oilInfl + tarInfl - 0.3 * tight + m.infl;
-      s.infl = clamp(s.infl + P.inflAdj * (inflT - s.infl) + P.inflNoise * clamp(P.inflScale0 + P.inflScaleK * s.anchor, 0.2, 3) * this.gs(i, 2), -1.5, 90);
+      const inflT = s.anchor + 0.25 * (s.gc - s.gpot) + 0.35 * fEff + oilInfl - 0.3 * tight + m.infl;
+      // шум — отдельная AR(1)-компонента с той же инерцией: граница снизу не копится в состоянии (иначе смещение вверх)
+      s.inflCore = clamp(s.inflCore + P.inflAdj * (inflT - s.inflCore), -5, 150);
+      s.inflN = (1 - P.inflAdj) * (s.inflN || 0) + P.inflNoise * clamp(P.inflScale0 + P.inflScaleK * s.anchor, 0.2, 3) * this.gs(i, 2);
+      s.tarPL += 0.15 * (P.tariffPass * c.imports * s.tauImp - s.tarPL);
+      s.tarPLslow += (s.tarPL - s.tarPLslow) / 12;
+      s.inflPL = (s.tarPL - s.tarPLslow) + (s.fxPL - s.fxPLslow);
+      s.infl = clamp(s.inflCore + s.inflN + s.inflPL, -1.5, 300);
+      m.sent += 0.15 * s.crypto * clamp(this.btcMom || 0, -1.5, 1.5);
 
       // безработица (закон Окуна)
       s.unemp = clamp(s.unemp + (-P.okun * (s.gc - s.gpot) / 12) + 0.08 * (s.uN + m.unemp - s.unemp), 0.4, 50);
@@ -374,6 +416,7 @@ export class Sim {
       s.stab += 0.10 * (stabT - s.stab);
     }
     this.prevG = newG;
+    stepFx(this); stepCrypto(this); stepEquity(this);
 
     // граждане, политика, решения правительств
     for (let i = 0; i < N; i++) updateCitizens(this, S[i], W.countries[i]);
@@ -397,22 +440,29 @@ export class Sim {
 
   sovereignDefault(i) {
     const s = this.S[i];
-    s.debt *= 0.65; s.gdp *= 0.94; s.infl += 8; s.stab = Math.max(0.05, s.stab - 0.2); s.defaulted++;
+    s.debt *= 0.65; s.gdp *= 0.94; s.inflCore += 8; s.stab = Math.max(0.05, s.stab - 0.2); s.defaulted++;
+    s.defaultT = 24; s.eqJump = (1 + s.eqJump) * 0.7 - 1;
     this.log('default', `💥 Суверенный дефолт: ${this.nm(i)}`, [i], 4);
   }
 
   aggregate() {
-    let gdp = 0, g = 0, infl = 0, stab = 0, unemp = 0, pop = 0;
-    for (const s of this.S) { gdp += s.gdp; g += s.g * s.gdp; infl += s.infl * s.gdp; stab += s.stab * s.pop; unemp += s.unemp * s.pop; pop += s.pop; }
-    this.agg = { gdp, g: g / gdp, infl: infl / gdp, stab: stab / pop, unemp: unemp / pop, pop, wars: this.wars.length, oil: this.oil };
+    let gdp = 0, g = 0, infl = 0, stab = 0, unemp = 0, pop = 0, gdpUsd = 0, crypto = 0;
+    for (const s of this.S) {
+      gdp += s.gdp; g += s.g * s.gdp; infl += s.infl * s.gdp; stab += s.stab * s.pop; unemp += s.unemp * s.pop; pop += s.pop;
+      gdpUsd += s.gdp * Math.exp((s.Plog || 0) - (s.e || 0)); crypto += (s.crypto || 0) * s.pop;
+    }
+    this.agg = { gdp, g: g / gdp, infl: infl / gdp, stab: stab / pop, unemp: unemp / pop, pop, wars: this.wars.length, oil: this.oil,
+      gdpUsd, crypto: crypto / pop, btc: this.btc, eq: this.corps ? worldEquity(this) : 0, trade: this.worldTrade ?? 1 };
   }
 
   recordHistory() {
     const a = this.agg, wh = this.wh;
     wh.gdp.push(a.gdp); wh.g.push(a.g); wh.infl.push(a.infl); wh.oil.push(this.oil); wh.wars.push(a.wars); wh.stab.push(a.stab); wh.unemp.push(a.unemp);
+    wh.btc?.push(a.btc); wh.eq?.push(a.eq); wh.trade?.push(a.trade); wh.gdpUsd?.push(a.gdpUsd);
     for (const s of this.S) {
       const h = s.hist;
       h.gdp.push(s.gdp); h.g.push(s.g); h.infl.push(s.infl); h.unemp.push(s.unemp); h.stab.push(s.stab); h.sent.push(s.sent); h.debt.push(s.debt);
+      h.fx.push(((Math.exp(s.e || 0)) - 1) * 100); h.eq.push((Math.exp(s.eq || 0) - 1) * 100);
       if (h.gdp.length > HIST) for (const k in h) h[k].shift();
     }
     for (const k in wh) if (wh[k].length > HIST) wh[k].shift();
@@ -441,6 +491,13 @@ export class Sim {
       case 'dStab': return base ? (s.stab - base.S[i].stab) * 100 : 0;
       case 'dUnemp': return base ? s.unemp - base.S[i].unemp : 0;
       case 'dInfl': return base ? s.infl - base.S[i].infl : 0;
+      case 'fx': return (Math.exp(s.e) - 1) * 100;                         // изменение курса к $ с начала, % (+ — девальвация)
+      case 'eq': return (Math.exp(s.eq) - 1) * 100;                        // фондовый индекс в местной валюте, % с начала
+      case 'expIdx': return (s.expIdx - 1) * 100;                          // экспорт к сценарию без барьеров, %
+      case 'crypto': return s.crypto * 100;
+      case 'gdpUsd': return s.gdp * Math.exp(s.Plog - s.e);
+      case 'dFx': return base ? (Math.exp(s.e - base.S[i].e) - 1) * 100 : 0;
+      case 'dEq': return base ? (Math.exp(s.eq - base.S[i].eq) - 1) * 100 : 0;
     }
     return 0;
   }

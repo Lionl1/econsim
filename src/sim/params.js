@@ -2,8 +2,10 @@
 // the rest come from the literature; the ensemble draws them within PRANGES (model uncertainty).
 export const P = {
   fiscalMult: 0.5,      // fiscal multiplier (Ramey 2019: 0.6–1; lower in EMs)
-  // calibrated to World Bank series 2000–2024
-  gNoise: 7.8, cycAmp: 0.6, cycNoise: 8, inflNoise: 0.16, gAdj: 0.5, inflAdj: 0.07, okun: 0.32, cycPers: 0.8, volLIC: 1.3, volHIC: 0.95, anchorK: 0.85, oilInfl: 10,
+  // calibrated to World Bank series 2000–2024, calm years (the baseline has no crisis events; the calendar adds them)
+  uNoise: 0.2,         // own unemployment shocks, pp per month
+  gNoise: 7, cycAmp: 0.6, cycNoise: 3.3, inflNoise: 0.17, gAdj: 0.5, inflAdj: 0.07, okun: 0.32, cycPers: 0.8, volLIC: 1.5, volHIC: 1.2, anchorK: 0.85, oilInfl: 10,
+  volSize: 0.13,        // growth shock size ∝ (GDP / $100 bn)^(−volSize)
   // inflation and the baseline path
   inflShift: 3,         // inflation noise is multiplicative around (core + inflShift): right-skewed, deflation rare and shallow
   anchorTrack: 0.25,    // monthly speed at which the inflation anchor follows the IMF path (interpolated by month)

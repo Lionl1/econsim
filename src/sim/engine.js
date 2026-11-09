@@ -71,7 +71,10 @@ export class Sim {
       stab0, stab: stab0, sent: 0.5, sentBase: clamp(0.38 + 0.4 * stab0 + 0.06 * c.dem, 0.35, 0.85), protest: 0,
       misery0: Math.min(infl, 60) + unemp,
       f: 0, r: r0, r0, rrN, mil0: clamp(c.mil, 0.2, 15), mil: clamp(c.mil, 0.2, 15),
-      level: -Math.max(0, 0.3 - stab0) * 40, pulse: 0,   // start at the steady instability level, not 0 (no first-year transient)
+      level: -Math.max(0, 0.3 - stab0) * 40, pulse: 0,
+      // shock size: large diversified economies are less volatile (volatility falls with size, Canning et al. 1998),
+      // poorer ones more
+      vol: clamp(Math.pow(c.gdp / 1e11, -P.volSize), 0.3, 2.5) * (c.income === 'LIC' ? P.volLIC : c.income === 'HIC' ? P.volHIC : 1),   // start at the steady instability level, not 0 (no first-year transient)
       hawk, coop: clamp(0.55 + 0.25 * c.dem - 0.35 * hawk + 0.15 * (hash(this.seed, i, 7777, 2) - 0.5), 0.05, 0.98),
       protect: clamp(0.3 + 0.3 * (1 - Math.min(1, c.openness)) + 0.3 * (hash(this.seed, i, 7777, 3) - 0.5), 0.02, 0.98),
       dem: c.dem, popGrowth: c.popGrowth,
@@ -397,9 +400,11 @@ export class Sim {
       const spill = 0.35 * c.openness * (foreignG - foreignBase);
       const fEff = s.f + m.f;
       const milExtra = s.mil - s.mil0;
-      const tight = s.r - (s.rrN + s.infl);   // real policy rate minus the neutral real rate (>0 = restrictive)
+      // real policy rate minus neutral, measured against expected inflation (the core, without the noise and one-off
+      // price jumps): with realized inflation, right-skewed spikes the rate cannot catch up with read as easing
+      const tight = s.r - (s.rrN + s.inflCore);   // >0 = restrictive
       const target = s.gpot + P.fiscalMult * fEff + equityGrowth(this, s) + 2 * s.crypto * clamp(this.btcMom || 0, -1, 1) + 0.1 * milExtra - 0.25 * tight + spill + oilEff + m.g + P.cycAmp * this.cyc * c.openness
-        + this.noise * P.gNoise * (c.income === 'LIC' ? P.volLIC : c.income === 'HIC' ? P.volHIC : 1) * this.gs(i, 1);
+        + this.noise * P.gNoise * s.vol * this.gs(i, 1);
       s.gc += P.gAdj * (target - s.gc);
       s.g = s.gc + 12 * dLevel;
       newG[i] = s.g;
@@ -427,7 +432,8 @@ export class Sim {
       m.sent += 0.15 * s.crypto * clamp(this.btcMom || 0, -1.5, 1.5);
 
       // unemployment (Okun's law)
-      s.unemp = clamp(s.unemp + (-P.okun * (s.gc - s.gpot) / 12) + 0.08 * (s.uN + m.unemp - s.unemp), 0.4, 50);
+      // plus its own small shocks (structural shifts, labor force, measurement)
+      s.unemp = clamp(s.unemp + (-P.okun * (s.gc - s.gpot) / 12) + 0.08 * (s.uN + m.unemp - s.unemp) + this.noise * P.uNoise * this.gs(i, 4), 0.4, 50);
 
       // public debt
       const deficit = s.deficit0 + fEff + (s.mil - s.mil0) + s.debt / 100 * Math.max(-3, s.r - s.r0);

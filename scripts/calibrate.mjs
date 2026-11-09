@@ -4,7 +4,7 @@ import { loadWorld } from './load.mjs';
 import { Sim, P } from '../src/sim/engine.js';
 const U = f => new URL(f, import.meta.url);
 const raw = JSON.parse(fs.readFileSync(U('../public/data/countries.json')));
-const hist = JSON.parse(fs.readFileSync(U('../data/history.json')));
+const hist = JSON.parse(fs.readFileSync(U('../public/data/history.json')));
 const world = loadWorld();
 if (process.env.P) Object.assign(P, JSON.parse(process.env.P));
 const SEEDS = +process.argv[2] || 3, YEARS = 24;

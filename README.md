@@ -125,4 +125,4 @@ data/                       caches used for calibration and trade rebuilds
 
 ## License
 
-[MIT](LICENSE). Data comes from the open sources listed above, each under its own terms (World Bank and IMF data: CC BY 4.0; UN Comtrade: free for non-commercial use with attribution; Natural Earth: public domain).
+[MIT](LICENSE). Data comes from the open sources listed above, each under its own terms (e.g. World Bank data is CC BY 4.0, Natural Earth is public domain); check the terms of IMF, UN Comtrade, CoinGecko and the other providers before reuse.

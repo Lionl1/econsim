@@ -169,7 +169,7 @@ Slot ranges (keep new draws out of them):
 | `hash(seed, i, 7777, 1..4)` | agent traits at reset |
 | `hash/gauss(seed, 777/778, …)` | ensemble parameter and magnitude draws |
 
-Same seed + same scenarios ⇒ identical run (tested in `npm test`). The UI starts each world with a random seed; Node scripts use fixed seeds.
+Same seed + same scenarios ⇒ identical run (tested in `npm test`). The UI starts each world with a random seed; Node scripts use fixed seeds. `new Sim(world, { seed, noise })` scales every random macro and market shock by `noise` (the 🎲 switch sets 0 for the globe worlds; ensembles always use 1); agent decisions keep their randomness.
 
 ## Scenarios and effects
 

@@ -56,7 +56,7 @@ npm run calendar -- 2000 8                   # calendar: model vs actual world g
 - **Left rail** — Scenarios (presets), Prompt (event as text), Builder, Calendar (historical events and counterfactuals), Markets (world stocks, bitcoin, sectors, currencies, exchanges, corporations), Data. Clicking the active icon collapses the panel.
 - **Top strip** — world KPIs (GDP, growth, inflation, oil, world stocks, bitcoin, trade, wars) with sparklines and the gap to the baseline.
 - **Right inspector** — the world (overview, rankings) or a selected country: Overview, Economy, Markets (currency, exchange, companies, trade partners), Politics (agents, relations), Actions (interventions).
-- **Bottom dock** — play/pause, speed, date, a timeline with event marks, a news ticker and the full event feed.
+- **Bottom dock** — play/pause, speed, 🎲 random shocks on/off (off shows the expected path; Evaluate keeps the randomness), date, a timeline with event marks, a news ticker and the full event feed.
 - **Map key** — metric picker and legend: growth, GDP, inflation, debt, exchange rates, stock indices, export effects, crypto adoption, stability, protests, and every metric's gap to the baseline.
 
 ## Data
@@ -89,7 +89,7 @@ Monthly step, per country (`src/sim/`):
 | `decisions.js` | government agents |
 | `citizens.js` | citizen agents |
 | `ensemble.js` | scenario vs baseline across many seeds with three layers of uncertainty |
-| `calendar.js` | 19 dated global events 2000–2025 with their effects |
+| `calendar.js` | 20 dated global events 2000–2025 with their effects |
 | `nlp.js` | rule-based Russian event parser |
 | `scenarios.js`, `blocs.js` | 19 presets; blocs, alliances, nuclear powers, rivalries |
 
@@ -104,7 +104,7 @@ The main and baseline worlds use a counter-based RNG (`rng.js`): the same (seed,
 
 ### Calibration
 
-Growth volatility, persistence and co-movement with world growth match World Bank 2000–2024 medians within ~±10% (`npm run calibrate`). Inflation in advanced economies matches (median 2.2% vs 2.3%, sd 2.2 vs 2.2); in emerging and low-income economies it is lower and calmer than in 2000–2024 (median 4.9% vs 6.4%), partly because the baseline follows today's IMF forecasts rather than the 2000s. Inflation noise is multiplicative around its level (right-skewed), so deflation is rare and shallow. FX and stock index volatility match their World Bank histories. Backtests (`npm run backtest`): the pandemic preset gives −4.3 pp of world growth in year one (actual −5…−6) and a +2.9 pp world inflation peak, the 2008-style crisis −3.8 pp (actual ~−5).
+Growth volatility, persistence and co-movement with world growth match World Bank 2000–2024 medians within ~±10% (`npm run calibrate`). Inflation in advanced economies matches (median 2.2% vs 2.3%, sd 2.2 vs 2.2); in emerging and low-income economies it is lower and calmer than in 2000–2024 (median 4.7% vs 6.4%), partly because the baseline follows today's IMF forecasts rather than the 2000s. Inflation noise is multiplicative around its level (right-skewed), so deflation is rare and shallow. FX and stock index volatility match their World Bank histories. Backtests (`npm run backtest`): the pandemic preset gives −4.3 pp of world growth in year one (actual −5…−6) and a +4.0 pp world inflation peak, the 2008-style crisis −3.8 pp (actual ~−5).
 
 ## Calendar of global events: what if it had not happened?
 
@@ -114,7 +114,7 @@ Using it takes three steps in the Calendar tab: pick a year (quick buttons for 2
 
 Two worlds run with the same randomness: **as it was** (every event after the start) and **without the removed events**. Each event is a dated scenario whose effects are sized to the order of magnitude of the real episode (some have phases, e.g. the COVID crash and the 2021 rebound). The Calendar tab shows, by year, actual world growth, both model worlds, the effect, and the counterfactual estimate *actual − model effect*; **Evaluate on 20 futures** gives medians and 10–90% bands (about half a minute in a Web Worker).
 
-How close is "as it was" to history? From 2000 with all events (`npm run calendar`), world growth correlates 0.87 with World Bank data (mean absolute error 0.82 pp): 2009 −0.9% (actual −1.3%), 2020 −3.6% (actual −2.9%), 2021 +7.5% (actual +6.5%). World inflation, compared with country CPI inflation weighted by GDP the same way the model aggregates it, has no average bias (−0.2 pp, mean absolute error 0.8 pp); the 2022 peak is underestimated (5.3% vs 7.9%). The events and their sizes are model assumptions, not estimates.
+How close is "as it was" to history? From 2000 with all events (`npm run calendar`), world growth correlates 0.87 with World Bank data (mean absolute error 0.80 pp): 2009 −1.2% (actual −1.3%), 2020 −3.7% (actual −2.9%), 2021 +7.7% (actual +6.5%). World inflation, compared with country CPI inflation weighted by GDP the same way the model aggregates it, correlates 0.88 with history (mean absolute error 0.58 pp, no average bias): 2008 5.1% (5.1%), 2022 8.0% (7.9%), 2023 6.3% (5.2%). The events and their sizes are model assumptions, not estimates.
 
 ## Uncertainty and the Evaluate window
 

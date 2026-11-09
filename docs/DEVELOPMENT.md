@@ -20,7 +20,7 @@ npm test           # smoke tests (~3 s)
 | `npm run sim -- 240` | headless run, prints the world by year and a few countries |
 | `npm run calibrate -- 6` | model moments vs World Bank 2000–2024; override parameters with `P='{"gNoise":9}' npm run calibrate` |
 | `npm run backtest` | pandemic, 2008 crisis and 2022 oil shock vs history |
-| `npm run calendar -- 2000 8 [ids\|all]` | calendar world from a start year: model vs actual growth and inflation, effect of the removed events |
+| `npm run calendar -- 2000 8 [ids\|all]` | calendar world from a start year: model vs actual growth and inflation by year, effect of the removed events, accuracy summary for both |
 | `npm run ensemble -- <preset\|"Russian text"> [seeds] [months]` | the Evaluate window in the terminal; `NOPARAMS=1` keeps only random events |
 | `node scripts/scenario-test.mjs [ids]` | each preset vs baseline after 5 years |
 | `npm run data` / `history` / `markets` / `trade` | refresh datasets (see [DATA.md](DATA.md)) |
@@ -30,7 +30,7 @@ npm test           # smoke tests (~3 s)
 1. `npm test` — must pass.
 2. `npm run calibrate -- 6` — growth and high-income inflation rows should stay within ~±15%.
 3. `npm run backtest` — pandemic year-one world growth around −4…−6 pp, crisis around −4…−5 pp.
-4. `npm run calendar -- 2000 8` — growth correlation with history ≥ 0.8, inflation bias near 0.
+4. `npm run calendar -- 2000 8` — growth and inflation correlation with history ≥ 0.8, inflation bias near 0.
 5. Open the app, run a preset and the Calendar once; check the console is clean.
 
 ## Conventions
@@ -85,5 +85,6 @@ Add it to `P` with a comment and a source, use `P.name` in the model, add a `PRA
 ## Debugging tips
 
 - `window.app` in the browser console exposes the world (`app.world`), both simulations (`app.sim`, `app.base`) and helpers (`app.launch`, `app.select`, `app.setStartYear`, `app.openTab`).
+- Expected path without noise: `new Sim(world, { seed, noise: 0 })` (the 🎲 switch in the dock does the same for the globe worlds).
 - Step manually: `for (let i = 0; i < 12; i++) { app.sim.step(); app.base.step(); } app.refreshAll(true)`.
 - In Node, `loadWorld()` / `loadData()` from `scripts/load.mjs` give the same world as the app; `buildWorld(raw, { ...data, history, startYear })` builds a historical one.

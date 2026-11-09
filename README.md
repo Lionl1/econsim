@@ -8,7 +8,9 @@ EconSim runs a monthly simulation of the world economy on an interactive 3D glob
 - **citizens** lose jobs, react to inflation and war, protest, emigrate and change governments through elections or coups;
 - **corporations** (63 of the world's largest) move production away from tariffs and sanctions to friendly hubs.
 
-You can run "what if" scenarios — presets, a builder, or a plain-language event in Russian ("Китай вторгается на Тайвань через 6 месяцев, нефть +30%") — and compare the world against a parallel **baseline** that shares the same random shocks, so the difference is the pure effect of the scenario. The **Evaluate** button reruns a scenario across many possible futures and reports the median effect and its uncertainty.
+The **calendar of global events** (2000–2025: the dot-com crash, 9/11, the 2008 crisis, the euro debt crisis, COVID-19, the war in Ukraine, the 2025 US tariffs and more) lets you travel back to any year with the actual state of the world, untick events, and see how the world would have looked without them — through today and on into the forecast.
+
+You can also run "what if" scenarios — presets, a builder, or a plain-language event in Russian ("Китай вторгается на Тайвань через 6 месяцев, нефть +30%") — and compare the world against a parallel **baseline** that shares the same random shocks, so the difference is the pure effect of the scenario. The **Evaluate** button reruns a scenario across many possible futures and reports the median effect and its uncertainty.
 
 > The interface and the event parser are in Russian. Code, comments and documentation are in English.
 
@@ -39,11 +41,12 @@ npm run calibrate 6                          # model moments vs World Bank histo
 npm run backtest                             # pandemic, 2008 crisis, 2022 oil shock vs history
 npm run ensemble -- us-china-trade-war 20 60 # preset or Russian event text, seeds, months
 node scripts/scenario-test.mjs               # every preset vs baseline
+npm run calendar -- 2000 8                   # calendar: model vs actual world growth since 2000 (start year, seeds, removed ids)
 ```
 
 ## Interface
 
-- **Left rail** — Scenarios (presets), Prompt (event as text), Builder, Markets (world stocks, bitcoin, sectors, currencies, exchanges, corporations), Data. Clicking the active icon collapses the panel.
+- **Left rail** — Scenarios (presets), Prompt (event as text), Builder, Calendar (historical events and counterfactuals), Markets (world stocks, bitcoin, sectors, currencies, exchanges, corporations), Data. Clicking the active icon collapses the panel.
 - **Top strip** — world KPIs (GDP, growth, inflation, oil, world stocks, bitcoin, trade, wars) with sparklines and the gap to the baseline.
 - **Right inspector** — the world (overview, rankings) or a selected country: Overview, Economy, Markets (currency, exchange, companies, trade partners), Politics (agents, relations), Actions (interventions).
 - **Bottom dock** — play/pause, speed, date, a timeline with event marks, a news ticker and the full event feed.
@@ -58,6 +61,7 @@ All files live in `public/data/` and come from open sources (`public/data/source
 | `countries.json` | 194 sovereign states + Taiwan, Palestine, Kosovo; macro, governance, demographics; gaps filled with regional medians (`imputed`) | World Bank WDI + WGI, world-countries |
 | `trade.json` | exports by partner (goods, HS TOTAL, 2023/2022), importer-reported with exporter mirror fallback; pairs reported by neither side get a gravity estimate. The current snapshot has 122 import and 121 export reporters: the public API started refusing requests before the US, UK, Vietnam and a few others were fetched — `npm run trade` resumes where it stopped | UN Comtrade |
 | `markets.json` | currencies and regimes, current rates, FX volatility, IMF WEO 2026–2031 forecasts, BTC/ETH, market caps and index volatility, 63 companies | open.er-api.com, World Bank, IMF DataMapper, CoinGecko, Wikidata |
+| `history.json` | 1995–2024 by country: growth, inflation, unemployment, GDP, population, exchange rate, debt; world growth and inflation | World Bank |
 | `world-50m.json` | borders | Natural Earth via world-atlas |
 
 Dependencies and disputed areas without their own country (Greenland, Puerto Rico, Hong Kong, …) are colored like the state the World Bank assigns them to; Antarctica, Western Sahara and the Siachen Glacier are hatched as not modeled.
@@ -78,6 +82,7 @@ Monthly step, per country (`src/sim/`):
 | `decisions.js` | government agents |
 | `citizens.js` | citizen agents |
 | `ensemble.js` | scenario vs baseline across many seeds with three layers of uncertainty |
+| `calendar.js` | 18 dated global events 2000–2025 with their effects |
 | `nlp.js` | rule-based Russian event parser |
 | `scenarios.js`, `blocs.js` | 19 presets; blocs, alliances, nuclear powers, rivalries |
 
@@ -93,6 +98,14 @@ The main and baseline worlds use a counter-based RNG (`rng.js`): the same (seed,
 ### Calibration
 
 Growth and inflation volatility, persistence and co-movement with world growth match World Bank 2000–2024 medians within ~±15% (`npm run calibrate`); FX and stock index volatility match their World Bank histories. Backtests (`npm run backtest`): the pandemic preset gives −5.0 pp of world growth in year one (actual −5…−6), the 2008-style crisis −3.8 pp (actual ~−5).
+
+## Calendar of global events: what if it had not happened?
+
+Pick a start year (2000–2025): the world starts from the actual state at the end of the previous year (World Bank GDP, population, growth, inflation, unemployment, debt, exchange rates). Before 2026 potential growth is the country's pre-start trend minus β-convergence (about 2 pp per log point of income growth), so China slows down as it gets richer without being told to; from 2026 the baseline follows the IMF forecast.
+
+Two worlds run with the same randomness: **as it was** (every event after the start) and **without the unticked events**. Each event is a dated scenario whose effects are sized to the order of magnitude of the real episode (some have phases, e.g. the COVID crash and the 2021 rebound). The Calendar tab shows, by year, actual world growth, both model worlds, the effect, and the counterfactual estimate *actual − model effect*; **Evaluate on 20 futures** gives medians and 10–90% bands (about half a minute in a Web Worker).
+
+How close is "as it was" to history? From 2000 with all events, the model's world growth correlates 0.84 with World Bank data, with a mean absolute error of 0.85 pp (`npm run calendar`): 2009 −0.8% (actual −1.3%), 2020 −3.1% (actual −2.9%), 2021 +7.8% (actual +6.5%). The events and their sizes are model assumptions, not estimates.
 
 ## Uncertainty and the Evaluate window
 

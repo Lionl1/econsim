@@ -24,11 +24,19 @@ export const METRICS = {
   dStab:  { label: 'Δ стабильности к базе', delta: true, stops: [[-20, BAD], [0, '#323a49'], [20, GOOD]], fmt: sgn(1, ' п.') },
   dUnemp: { label: 'Δ безработицы к базе', delta: true, stops: [[-4, GOOD], [0, '#323a49'], [4, BAD]], fmt: sgn(1, ' п.п.') },
   dInfl:  { label: 'Δ инфляции к базе', delta: true, stops: [[-4, GOOD], [0, '#323a49'], [6, BAD]], fmt: sgn(1, ' п.п.') },
+  gdpUsd: { label: 'ВВП в текущих $', log: true, stops: [[1e9, '#1b2a49'], [2e10, '#264d7a'], [3e11, '#2a7a9b'], [2e12, '#35b1a0'], [1e13, '#a8e063'], [3e13, '#f4e04d']], fmt: fmtMoney },
+  fx:     { label: 'Курс к $ с начала (+ = девальвация)', stops: [[-20, GOOD2], [0, MID], [30, WARN], [200, BAD]], fmt: sgn(0, '%') },
+  eq:     { label: 'Фондовый индекс с начала', stops: [[-40, BAD], [-10, WARN], [0, MID], [40, GOOD], [150, GOOD2]], fmt: sgn(0, '%') },
+  expIdx: { label: 'Экспорт: эффект барьеров', stops: [[-30, BAD], [-3, WARN], [0, MID], [5, GOOD], [20, GOOD2]], fmt: sgn(1, '%') },
+  crypto: { label: 'Доля населения с криптой', stops: [[0, '#1b2a49'], [2, '#264d7a'], [6, '#2a7a9b'], [12, '#a8e063'], [25, '#f4e04d']], fmt: pct(1) },
+  dFx:    { label: 'Δ курса к базе (+ = слабее)', delta: true, stops: [[-15, GOOD], [0, '#323a49'], [30, BAD]], fmt: sgn(1, '%') },
+  dEq:    { label: 'Δ фондового индекса к базе', delta: true, stops: [[-30, BAD], [0, '#323a49'], [30, GOOD]], fmt: sgn(1, '%') },
 };
 export const METRIC_GROUPS = [
-  ['Экономика', ['g', 'gdp', 'gdpPc', 'infl', 'unemp', 'debt']],
+  ['Экономика', ['g', 'gdp', 'gdpUsd', 'gdpPc', 'infl', 'unemp', 'debt']],
+  ['Рынки и торговля', ['fx', 'eq', 'expIdx', 'crypto']],
   ['Общество и политика', ['stab', 'sent', 'protest', 'mil']],
-  ['Влияние сценария (разница с базой)', ['dGdp', 'dStab', 'dUnemp', 'dInfl']],
+  ['Влияние сценария (разница с базой)', ['dGdp', 'dInfl', 'dUnemp', 'dStab', 'dFx', 'dEq']],
 ];
 
 const parsed = {};

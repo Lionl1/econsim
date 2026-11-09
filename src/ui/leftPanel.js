@@ -2,16 +2,25 @@
 import { PRESETS, SHOCK_VARS } from '../sim/scenarios.js';
 import { targetSelectHtml, describeEffect, esc } from './targets.js';
 import { parseEvent } from '../sim/nlp.js';
+import { initMarkets } from './marketsPanel.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 
 export function initLeft(app) {
-  const T = app.T;
-  document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => {
-    document.querySelectorAll('#tabs button').forEach(x => x.classList.toggle('on', x === b));
-    document.querySelectorAll('#left .tab').forEach(x => x.classList.toggle('on', x.id === 'tab-' + b.dataset.tab));
-  });
-  initScenarios(app); initBuilder(app); initPrompt(app); initSources(app);
+  const rail = [...document.querySelectorAll('#rail button')];
+  app.openTab = tab => {
+    const b = rail.find(x => x.dataset.tab === tab);
+    rail.forEach(x => x.classList.toggle('on', x === b));
+    document.querySelectorAll('#left .tab').forEach(x => x.classList.toggle('on', x.id === 'tab-' + tab));
+    $('#left-title').textContent = b.querySelector('span:last-child').textContent;
+    document.body.classList.remove('left-collapsed');
+    if (tab === 'mkt') app.refreshMarkets?.(true);
+  };
+  // повторный клик по активной иконке сворачивает панель
+  rail.forEach(b => b.onclick = () => b.classList.contains('on') && !document.body.classList.contains('left-collapsed')
+    ? document.body.classList.add('left-collapsed') : app.openTab(b.dataset.tab));
+  $('#left-close').onclick = () => document.body.classList.add('left-collapsed');
+  initScenarios(app); initBuilder(app); initPrompt(app); initMarkets(app); initSources(app);
 }
 
 // ---------- вкладка «Сценарии» ----------
@@ -97,7 +106,7 @@ function initBuilder(app) {
   renderList();
   app.loadDraft = d => {
     draft.effects = d.effects.map(e => ({ ...e })); $('#b-title').value = d.title; $('#b-dur').value = d.duration; $('#b-start').value = d.delay || 0; renderList();
-    document.querySelector('#tabs [data-tab=build]').click();
+    app.openTab('build');
   };
 
   $('#b-add').onclick = () => {
@@ -225,11 +234,13 @@ function initSources(app) {
     <h3>Что внутри</h3>
     <p class="hint">${n} стран (194 независимых + Тайвань, Палестина и Косово). Зависимые территории (Гренландия, Пуэрто-Рико, Гонконг…) окрашены по своему государству; заштрихованы территории вне модели. Для каждой: ВВП, население, рост, инфляция, безработица, госдолг, торговля, военные расходы, неравенство, индикаторы управления (World Bank). Пропуски заполнены региональной медианой${imp ? ` (у ${imp} микрогосударств заполнено много полей)` : ''}. Обновить данные: <code>npm run data</code>.</p>
     <h3>Как устроена модель</h3>
-    <p class="hint"><b>Страна</b> — монетарная и фискальная политика (правило Тейлора, стимулы, долг), торговля по гравитационной модели, тарифы, санкции, войны и союзы, цена нефти.<br>
-    <b>Агенты-правительства</b> (характер: ястребиность, кооперативность, протекционизм) отвечают на пошлины, вводят санкции, наращивают армию, помогают союзникам и объявляют войны.<br>
-    <b>Агенты-граждане</b> (десятки на страну) теряют работу, реагируют на инфляцию и войну, выходят на протесты, эмигрируют; настроение определяет смену власти на выборах и риск переворота.<br>
-    Базовый мир идёт параллельно с теми же случайными числами — разница показывает чистый эффект вашего сценария.</p>
-    <p class="hint">⚠ Это учебная модель, а не прогноз. Волатильность роста и инфляции, их инерция и корреляция с мировым циклом откалиброваны по рядам World Bank 2000–2024 (<code>npm run calibrate</code>); пандемия и финкризис сверены с реальными просадками (<code>npm run backtest</code>). Конкретные страны и структурные связи (торговля, войны) не калибровались.</p>
+    <p class="hint"><b>Страна</b> — монетарная и фискальная политика (правило Тейлора, стимулы, долг), цена нефти, войны и союзы. Базовая траектория опирается на прогноз IMF WEO 2026–2031.<br>
+    <b>Торговля</b> — реальные потоки UN Comtrade и спрос Армингтона: пошлины и санкции перестраивают закупки между поставщиками, торговля перетекает к третьим странам, пошлины разово поднимают цены.<br>
+    <b>Валюты</b> — плавающие курсы (ставки, риск, нефть, шум по истории), привязки с возможным срывом, еврозона, долларизация; курс влияет на цены и экспорт.<br>
+    <b>Рынки</b> — фондовые индексы стран, эффект богатства, крипта; <b>корпорации-агенты</b> переносят производство из-под барьеров.<br>
+    <b>Агенты-правительства</b> отвечают на пошлины, вводят санкции, наращивают армию, помогают союзникам, объявляют войны. <b>Агенты-граждане</b> теряют работу, протестуют, эмигрируют, меняют власть.<br>
+    Базовый мир идёт параллельно с теми же случайными числами — разница показывает чистый эффект сценария. Кнопка «📊 Оценить» добавляет разброс по случайным событиям, параметрам модели и величине события.</p>
+    <p class="hint">⚠ Учебная модель, а не прогноз. Волатильность роста, инфляции, курсов и индексов откалибрована по данным World Bank (<code>npm run calibrate</code>), пандемия и финкризис сверены с реальностью (<code>npm run backtest</code>). Коэффициенты торговли, курсов и рынков взяты из литературы (ссылки — в <code>src/sim/params.js</code>). Доля крипты по странам — прокси.</p>
     <h3>Источники данных</h3><div id="src-list"></div>`;
   fetch('/data/sources.json').then(r => r.json()).then(list => {
     $('#src-list').innerHTML = list.map(s => `<div class="card"><div class="t">${s.used ? '✅' : '⬜'} <a href="${s.url}" target="_blank" rel="noopener">${s.name}</a></div><div class="d">${s.what}</div></div>`).join('');

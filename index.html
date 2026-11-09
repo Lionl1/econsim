@@ -4,52 +4,67 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>EconSim — симулятор стран мира</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/src/style.css" />
 </head>
 <body>
   <div id="globe"></div>
+  <div id="vignette"></div>
 
+  <!-- верх: бренд + ключевые показатели мира -->
   <header id="topbar">
-    <div class="brand">🌍 EconSim</div>
-    <div class="clock"><span id="date">—</span></div>
-    <div class="controls">
-      <button id="btn-play" class="primary" title="Пуск / пауза (пробел)">▶ Пуск</button>
-      <button id="btn-step" title="Один месяц">+1 мес</button>
-      <select id="speed" title="Скорость">
-        <option value="0.5">0.5 мес/с</option><option value="1" selected>1 мес/с</option><option value="2">2 мес/с</option>
-        <option value="4">4 мес/с</option><option value="10">10 мес/с</option><option value="24">24 мес/с</option>
-      </select>
-      <button id="btn-reset" title="Начать заново">⟲ Сброс</button>
-    </div>
-    <div class="metric">
-      <label>Показать на глобусе</label>
-      <select id="metric"></select>
-    </div>
-    <div class="spacer"></div>
-    <div class="agg" id="agg"></div>
+    <div class="brand"><span class="logo">◍</span><span>EconSim</span><span class="ver">мир · 197 стран</span></div>
+    <div id="kpis"></div>
   </header>
 
+  <!-- левая навигация -->
+  <nav id="rail">
+    <button data-tab="scen" class="on" title="Готовые сценарии"><span class="ic">🎬</span><span>Сценарии</span></button>
+    <button data-tab="prompt" title="Событие обычной фразой"><span class="ic">✍️</span><span>Промт</span></button>
+    <button data-tab="build" title="Собрать свой сценарий"><span class="ic">🧩</span><span>Конструктор</span></button>
+    <button data-tab="mkt" title="Рынки, валюты, крипта, корпорации"><span class="ic">📈</span><span>Рынки</span></button>
+    <button data-tab="src" title="Данные и модель"><span class="ic">🗂</span><span>Данные</span></button>
+  </nav>
   <aside id="left" class="panel">
-    <nav class="tabs" id="tabs">
-      <button data-tab="scen" class="on">Сценарии</button>
-      <button data-tab="prompt">Промт</button>
-      <button data-tab="build">Конструктор</button>
-      <button data-tab="src">Данные</button>
-    </nav>
+    <div class="ph"><b id="left-title">Сценарии</b><button class="icon" id="left-close" title="Свернуть">⟨</button></div>
     <section id="tab-scen" class="tab on"></section>
     <section id="tab-prompt" class="tab"></section>
     <section id="tab-build" class="tab"></section>
+    <section id="tab-mkt" class="tab"></section>
     <section id="tab-src" class="tab"></section>
   </aside>
 
+  <!-- правый инспектор: мир или страна -->
   <aside id="right" class="panel"></aside>
 
-  <div id="legend"><div class="lg-title" id="lg-title"></div><div class="lg-bar" id="lg-bar"></div><div class="lg-lbl"><span id="lg-min"></span><span id="lg-max"></span></div></div>
+  <!-- выбор метрики + легенда -->
+  <div id="mapkey" class="panel">
+    <button id="metric-btn"><span class="mk-dot"></span><span id="lg-title">Рост ВВП</span><span class="chev">▾</span></button>
+    <div class="lg-bar" id="lg-bar"></div><div class="lg-lbl"><span id="lg-min"></span><span id="lg-max"></span></div>
+    <div id="metric-menu"></div>
+  </div>
 
-  <section id="feed" class="panel">
-    <div class="feed-head"><b>Лента событий</b>
-      <label><input type="checkbox" id="feed-minor" /> мелкие</label></div>
-    <div id="feed-list"></div>
+  <!-- нижний док: время + новости -->
+  <section id="dock" class="panel">
+    <div class="dock-row">
+      <button id="btn-reset" class="icon" title="Начать заново">⟲</button>
+      <button id="btn-play" class="play" title="Пуск / пауза (пробел)">▶</button>
+      <button id="btn-step" class="icon" title="Один месяц вперёд">⏭</button>
+      <div class="speed" id="speed">
+        <button data-v="0.5">½</button><button data-v="1" class="on">1</button><button data-v="2">2</button><button data-v="4">4</button><button data-v="10">10</button><button data-v="24">24</button>
+        <span class="unit">мес/с</span>
+      </div>
+      <div class="date" id="date">—</div>
+      <div class="timeline" id="timeline"><div class="tl-fill" id="tl-fill"></div><div id="tl-marks"></div><div class="tl-years" id="tl-years"></div></div>
+    </div>
+    <div class="ticker">
+      <div id="ticker-list"></div>
+      <label class="minor"><input type="checkbox" id="feed-minor" /> мелкие</label>
+      <button class="icon" id="feed-toggle" title="Вся лента">☰</button>
+    </div>
+    <div id="feed"><div id="feed-list"></div></div>
   </section>
 
   <div id="tooltip"></div>

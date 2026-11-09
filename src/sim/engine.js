@@ -1,0 +1,413 @@
+// Ядро симуляции: ежемесячный шаг. Макроэкономика стран + агенты-граждане + агенты-правительства + войны/санкции/тарифы.
+import { hash, gauss } from './rng.js';
+import { resolve } from './world.js';
+import { DEFENSE_BLOCS, BLOCS } from './blocs.js';
+import { initCitizens, updateCitizens } from './citizens.js';
+import { decide } from './decisions.js';
+
+export const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+const HIST = 900;
+// Калибруемые параметры (scripts/calibrate.mjs)
+export const P = { gNoise: 8.5, cycAmp: 0.6, cycNoise: 8, inflNoise: 1.5, gAdj: 0.5, inflAdj: 0.07, okun: 0.32, cycPers: 0.8, volLIC: 1.3, volHIC: 0.95, anchorK: 0.85, inflScale0: 0.3, inflScaleK: 0.28, oilInfl: 10 };
+
+export class Sim {
+  constructor(world, { seed = 1, baseline = false } = {}) {
+    this.world = world; this.seed = seed; this.baseline = baseline;
+    this.reset();
+  }
+
+  reset() {
+    const W = this.world, N = W.N;
+    this.t = 0;
+    this.startYear = 2026;
+    this.oil = 1; this.cyc = 0; this.oilShock = 0;
+    this.T = new Float32Array(N * N);          // тарифы: T[i*N+j] — надбавка, которую i вводит на товары j (%)
+    this.San = new Uint8Array(N * N);          // санкции: San[i*N+j] = 1 — i ввёл санкции против j
+    this.warMat = new Uint8Array(N * N);       // 1 — страны воюют друг против друга
+    this.R = Float32Array.from(W.base);        // динамические отношения
+    this.aid = new Float32Array(N * N);        // «память» о помощи, затухает
+    this.wars = []; this.truce = new Map();
+    this.lockedSan = new Set(); this.lockedT = new Set();
+    this.events = []; this.eventSeq = 0;
+    this.scenarios = []; this.scSeq = 0;
+    this.wh = { gdp: [], g: [], infl: [], oil: [], wars: [], stab: [], unemp: [] };
+    this.prevG = new Float32Array(N);
+    this.S = W.countries.map(c => this.initCountry(c));
+    this.S.forEach((s, i) => { this.prevG[i] = s.g; });
+    this.aggregate();
+    this.recordHistory();
+  }
+
+  rnd(i, slot, t = this.t) { return hash(this.seed, i, t, slot); }
+  gs(i, slot, t = this.t) { return gauss(this.seed, i, t, slot); }
+
+  initCountry(c) {
+    const i = c.i;
+    const gpot = clamp(0.4 * c.growth + 0.6 * (4.6 - 0.36 * Math.log(Math.max(c.gdpPc, 300) / 1000)), -0.5, 7);
+    const infl = clamp(c.infl, -2, 60);
+    const anchor = clamp(infl * P.anchorK, 1.5, 18);
+    const debt = clamp(c.debt, 3, 300);
+    const stab0 = clamp(0.52 + 0.2 * c.wgiPV + 0.05 * c.wgiGE, 0.08, 0.97);
+    const r0 = clamp(anchor + 0.5 * gpot + 0.5 + 0.8 * (infl - anchor), 0.3, 40);
+    const unemp = clamp(c.unemp, 0.5, 40);
+    const hawk = clamp(0.2 + 0.05 * c.mil + 0.3 * (1 - c.dem) + 0.25 * (hash(this.seed, i, 7777, 1) - 0.5) + (c.nuclear ? 0.05 : 0), 0.02, 0.98);
+    const s = {
+      i, gdp: c.gdp, pop: c.pop, gpot, gc: clamp(c.growth, -4, 9), g: clamp(c.growth, -4, 9),
+      infl0: infl, infl, anchor, unemp0: unemp, unemp, uN: unemp,
+      debt, debt0: debt, deficit0: debt * (gpot + anchor) / 100,
+      stab0, stab: stab0, sent: 0.5, sentBase: clamp(0.38 + 0.4 * stab0 + 0.06 * c.dem, 0.35, 0.85), protest: 0,
+      misery0: Math.min(infl, 60) + unemp,
+      f: 0, r: r0, r0, mil0: clamp(c.mil, 0.2, 15), mil: clamp(c.mil, 0.2, 15),
+      level: 0, pulse: 0,
+      hawk, coop: clamp(0.55 + 0.25 * c.dem - 0.35 * hawk + 0.15 * (hash(this.seed, i, 7777, 2) - 0.5), 0.05, 0.98),
+      protect: clamp(0.3 + 0.3 * (1 - Math.min(1, c.openness)) + 0.3 * (hash(this.seed, i, 7777, 3) - 0.5), 0.02, 0.98),
+      dem: c.dem, popGrowth: c.popGrowth,
+      warCount: 0, sanctionPressure: 0, defaulted: 0, migNet: 0, lastDecide: 0, lastGovChange: 0,
+      nextElection: Math.floor(12 + 48 * hash(this.seed, i, 7777, 4)),
+      protestFlag: false,
+      mods: this.blankMods(),
+      hist: { gdp: [], g: [], infl: [], unemp: [], stab: [], sent: [], debt: [] },
+    };
+    initCitizens(this, s, c);
+    return s;
+  }
+
+  blankMods() { return { g: 0, infl: 0, unemp: 0, stab: 0, sent: 0, mil: 0, f: 0 }; }
+
+  // ---------- журнал ----------
+  log(kind, text, ids = [], sev = 1) {
+    this.events.push({ id: ++this.eventSeq, t: this.t, kind, text, ids, sev });
+    if (this.events.length > 600) this.events.splice(0, 100);
+  }
+  nm(i) { return this.world.countries[i].nameRu; }
+
+  // ---------- сценарии ----------
+  addScenario(def) {
+    const sc = { id: ++this.scSeq, title: def.title || 'Сценарий', desc: def.desc || '', start: def.start ?? this.t, duration: def.duration ?? 12,
+      effects: def.effects.map(e => ({ ...e })), started: false, ended: false, saved: [] };
+    this.scenarios.push(sc);
+    return sc;
+  }
+  removeScenario(id) {
+    const sc = this.scenarios.find(s => s.id === id);
+    if (!sc) return;
+    if (sc.started && !sc.ended) this.endScenario(sc);
+    this.scenarios = this.scenarios.filter(s => s.id !== id);
+  }
+
+  targets(e, key) {
+    const cacheKey = '_' + key;
+    if (!e[cacheKey]) e[cacheKey] = resolve(this.world, e[key] || []);
+    return e[cacheKey];
+  }
+  meanOf(key) {
+    this._means ??= {};
+    return this._means[key] ??= this.world.countries.reduce((a, c) => a + (c[key] ?? 0), 0) / this.world.N;
+  }
+
+  startScenario(sc) {
+    sc.started = true;
+    this.log('scenario', `▶ Сценарий: ${sc.title}`, [], 3);
+    const N = this.world.N;
+    for (const e of sc.effects) {
+      if (e.kind === 'tariff') {
+        for (const a of this.targets(e, 'from')) for (const b of this.targets(e, 'to')) {
+          if (a === b) continue;
+          const k = a * N + b; sc.saved.push(['T', k, this.T[k]]);
+          this.T[k] = Math.max(this.T[k], e.value); this.lockedT.add(k);
+        }
+      } else if (e.kind === 'sanction') {
+        for (const a of this.targets(e, 'from')) for (const b of this.targets(e, 'to')) {
+          if (a === b) continue;
+          const k = a * N + b; sc.saved.push(['S', k, this.San[k]]);
+          this.San[k] = 1; this.lockedSan.add(k);
+        }
+      } else if (e.kind === 'war') {
+        const A = this.targets(e, 'a'), B = this.targets(e, 'b');
+        if (A.length && B.length) { const w = this.declareWar(A, B, { forcedEnd: sc.duration > 0 ? sc.start + sc.duration : null, scenario: sc.id, noAllies: e.noAllies }); sc.saved.push(['W', w.id]); }
+      } else if (e.kind === 'relation') {
+        for (const a of this.targets(e, 'a')) for (const b of this.targets(e, 'b')) {
+          if (a === b) continue;
+          this.R[a * N + b] = this.R[b * N + a] = clamp(this.R[a * N + b] + e.value, -1, 1);
+        }
+      }
+    }
+  }
+  endScenario(sc) {
+    sc.ended = true;
+    for (const rec of sc.saved) {
+      if (rec[0] === 'T') { this.T[rec[1]] = rec[2]; this.lockedT.delete(rec[1]); }
+      else if (rec[0] === 'S') { this.San[rec[1]] = rec[2]; this.lockedSan.delete(rec[1]); }
+      else if (rec[0] === 'W') { const w = this.wars.find(x => x.id === rec[1]); if (w) this.endWar(w, 'сценарий завершён'); }
+    }
+    this.log('scenario', `■ Сценарий завершён: ${sc.title}`, [], 2);
+  }
+
+  applyScenarios() {
+    for (const s of this.S) s.mods = this.blankMods(), s.pulse = 0;
+    this.oilShock = 0;
+    for (const sc of this.scenarios) {
+      const t0 = sc.start, dur = Math.max(sc.duration, 1), t1 = t0 + dur;
+      if (this.t >= t0 && !sc.started) this.startScenario(sc);
+      if (this.t >= t0 && this.t < t1) {
+        for (const e of sc.effects) {
+          if (e.kind === 'oil') this.oilShock += e.value;
+          if (e.kind !== 'shock') continue;
+          const idxs = this.targets(e, 'targets');
+          const mean = e.scale && e.scale !== 'none' ? this.meanOf(e.scale) : 1;
+          for (const i of idxs) {
+            const s = this.S[i], c = this.world.countries[i];
+            const k = e.scale && e.scale !== 'none' ? clamp((c[e.scale] ?? mean) / mean, 0.2, 3) : 1;
+            const v = e.value * k;
+            switch (e.var) {
+              case 'growth': s.mods.g += v; break;
+              case 'infl': s.mods.infl += v; break;
+              case 'unemp': s.mods.unemp += v; break;
+              case 'stab': s.mods.stab += v; break;
+              case 'sent': s.mods.sent += v; break;
+              case 'mil': s.mods.mil += v; break;
+              case 'fiscal': s.mods.f += v; break;
+              case 'level': s.pulse += v / dur; break;                       // % ВВП за весь срок
+              case 'pop': s.pop *= 1 + v / dur / 100; break;
+              case 'debt': s.debt += v / dur; break;
+            }
+          }
+        }
+      }
+      if (this.t >= t1 && sc.started && !sc.ended && sc.duration > 0) this.endScenario(sc);
+    }
+  }
+
+  // ---------- войны ----------
+  milPower(i) {
+    const s = this.S[i];
+    return Math.pow(Math.max(1, s.gdp * s.mil / 100), 0.9) * (0.6 + 0.8 * s.stab);
+  }
+  sidePower(list) { return list.reduce((a, i) => a + this.milPower(i), 0); }
+
+  declareWar(A, B, opts = {}) {
+    const N = this.world.N;
+    const w = { id: ++this.eventSeq + 100000, a: [...A], b: [...B], start: this.t, intensity: 0.5 + 0.4 * this.rnd(A[0], 91),
+      forcedEnd: opts.forcedEnd ?? null, scenario: opts.scenario ?? null, primaryA: A[0], primaryB: B[0] };
+    if (!opts.noAllies) this.recruitAllies(w);
+    this.wars.push(w);
+    this.rebuildWarMat();
+    this.log('war', `⚔ Война: ${w.a.map(i => this.nm(i)).join(', ')} ⟷ ${w.b.map(i => this.nm(i)).join(', ')}`, [...w.a, ...w.b], 5);
+    for (const a of w.a) for (const b of w.b) this.R[a * N + b] = this.R[b * N + a] = clamp(this.R[a * N + b] - 0.4, -1, 1);
+    return w;
+  }
+
+  recruitAllies(w) {
+    const W = this.world, N = W.N;
+    const atk = w.primaryA, vic = w.primaryB;
+    const inWar = new Set([...w.a, ...w.b]);
+    const cand = new Set();
+    // защита жертвы: оборонные блоки и двусторонние союзы
+    for (const b of DEFENSE_BLOCS) {
+      if (W.countries[vic].blocs.includes(b) && !W.countries[atk].blocs.includes(b))
+        BLOCS[b].forEach(iso => { const k = W.idx.get(iso); if (k != null) cand.add(k); });
+    }
+    W.allies[vic].forEach(k => cand.add(k));
+    for (const k of cand) {
+      if (inWar.has(k) || W.allies[atk].has(k) || W.countries[k].blocs.some(b => DEFENSE_BLOCS.includes(b) && W.countries[atk].blocs.includes(b))) continue;
+      const bilateral = W.allies[vic].has(k);
+      const p = (bilateral ? 0.55 : 0.4) + 0.3 * this.R[k * N + vic] - 0.3 * this.R[k * N + atk];
+      if (this.rnd(k, 92 + w.id % 7) < p * (0.4 + 0.6 * this.S[k].hawk + 0.3 * (this.S[k].mil > 1.5 ? 1 : 0))) {
+        w.b.push(k); inWar.add(k);
+        this.log('join', `🛡 ${this.nm(k)} вступает в войну на стороне: ${this.nm(vic)}`, [k, vic], 4);
+      }
+    }
+    for (const k of W.allies[atk]) {
+      if (inWar.has(k)) continue;
+      if (this.rnd(k, 99 + w.id % 5) < 0.3 + 0.2 * this.S[k].hawk) {
+        w.a.push(k); inWar.add(k);
+        this.log('join', `🛡 ${this.nm(k)} вступает в войну на стороне: ${this.nm(atk)}`, [k, atk], 4);
+      }
+    }
+  }
+
+  rebuildWarMat() {
+    const N = this.world.N;
+    this.warMat.fill(0);
+    this.S.forEach(s => (s.warCount = 0));
+    for (const w of this.wars) {
+      for (const a of w.a) { this.S[a].warCount++; for (const b of w.b) this.warMat[a * N + b] = this.warMat[b * N + a] = 1; }
+      for (const b of w.b) this.S[b].warCount++;
+    }
+  }
+
+  endWar(w, reason) {
+    this.wars = this.wars.filter(x => x !== w);
+    this.rebuildWarMat();
+    const N = this.world.N;
+    for (const a of w.a) for (const b of w.b) {
+      this.truce.set(a * N + b, this.t + 48); this.truce.set(b * N + a, this.t + 48);
+      this.R[a * N + b] = this.R[b * N + a] = Math.min(this.R[a * N + b] + 0.15, -0.1);
+    }
+    this.log('peace', `🕊 Перемирие (${reason}): ${w.a.map(i => this.nm(i)).join(', ')} / ${w.b.map(i => this.nm(i)).join(', ')} — ${this.t - w.start} мес.`, [...w.a, ...w.b], 4);
+  }
+
+  stepWars() {
+    for (const w of [...this.wars]) {
+      const PA = this.sidePower(w.a), PB = this.sidePower(w.b);
+      const shareA = PA / (PA + PB);
+      const dmg = (i, share, primary) => {
+        const s = this.S[i];
+        const d = w.intensity * 0.45 * share * 2 * (primary ? 1 : 0.3);   // % ВВП в месяц
+        s.pulse -= d; s.mods.infl += 0.35 * d; s.mods.sent -= 0.01 * d;
+        s.pop *= 1 - d * 0.00015;
+      };
+      w.a.forEach(i => dmg(i, 1 - shareA, i === w.primaryA));
+      w.b.forEach(i => dmg(i, shareA, i === w.primaryB));
+      const dur = this.t - w.start;
+      const weak = Math.min(this.S[w.primaryA].stab, this.S[w.primaryB].stab) < 0.15;
+      const lopsided = Math.max(shareA, 1 - shareA) > 0.88 && dur > 6;
+      const nuc = w.a.some(i => this.world.countries[i].nuclear) && w.b.some(i => this.world.countries[i].nuclear);
+      const p = 0.012 + 0.0007 * dur + (weak ? 0.05 : 0) + (lopsided ? 0.04 : 0) + (nuc ? 0.05 : 0);
+      if (w.forcedEnd != null) { if (this.t >= w.forcedEnd) this.endWar(w, 'срок истёк'); }
+      else if (this.rnd(w.primaryA, 93 + w.id % 11) < p) this.endWar(w, lopsided ? 'победа одной стороны' : 'истощение сторон');
+    }
+  }
+
+  // ---------- главный шаг ----------
+  step() {
+    const W = this.world, N = W.N, S = this.S, t = this.t;
+    this.applyScenarios();
+    this.stepWars();
+
+    // нефть
+    let wg = 0, wgpot = 0, gw = 0, oilTot = 0, oilHit = 0;
+    for (const s of S) { const c = W.countries[s.i]; wg += this.prevG[s.i] * s.gdp; wgpot += s.gpot * s.gdp; gw += s.gdp; oilTot += c.fuelExp / 100 * s.gdp; oilHit += c.fuelExp / 100 * s.gdp * (0.5 * Math.min(1, s.warCount) + 0.6 * s.sanctionPressure); }
+    const gap = (wg - wgpot) / gw;
+    const oilTarget = 1 + 0.12 * gap + this.oilShock + 1.2 * (oilHit / Math.max(1, oilTot));
+    this.oil = clamp(this.oil + 0.15 * (oilTarget - this.oil) + 0.012 * gauss(this.seed, 9999, t, 1), 0.3, 4.5);
+    this.cyc = P.cycPers * this.cyc + P.cycNoise * gauss(this.seed, 9998, t, 2);
+    const p = this.oil;
+
+    // макро-обновление стран
+    const newG = new Float32Array(N);
+    for (let i = 0; i < N; i++) {
+      const s = S[i], c = W.countries[i], m = s.mods;
+      let foreignG = 0, foreignBase = 0, expLost = 0, impTar = 0, sanc = 0;
+      for (const j of W.partners[i]) {
+        const w = W.share[i * N + j];
+        foreignG += w * this.prevG[j]; foreignBase += w * S[j].gpot;
+        const sanEither = this.San[j * N + i] | this.San[i * N + j];
+        const war = this.warMat[i * N + j];
+        expLost += w * Math.min(0.9, 0.012 * (this.T[j * N + i] + 40 * sanEither + 100 * war));
+        impTar += w * (this.T[i * N + j] + 40 * sanEither + 100 * war);
+        sanc += w * this.San[j * N + i];
+      }
+      s.sanctionPressure = Math.min(1, sanc * 2.5);
+      // уровневые эффекты политики (тарифы, санкции, нестабильность)
+      const levelT = -70 * (c.exports / 100) * expLost - 0.15 * (c.imports / 100) * impTar - Math.max(0, 0.3 - s.stab) * 40;
+      const prevLevel = s.level;
+      s.level += 0.08 * (levelT - s.level);
+      const dLevel = s.level - prevLevel + s.pulse;                   // % за месяц
+      // экзогенные факторы
+      const e = clamp(c.energyImp / 100, -1, 1);
+      const oilEff = -1.8 * (p - 1) * e;
+      const spill = 0.35 * c.openness * (foreignG - foreignBase);
+      const fEff = s.f + m.f;
+      const milExtra = s.mil - s.mil0;
+      const tight = s.r - (s.r0 + (s.infl - s.infl0));   // жёсткость политики относительно «нейтральной» траектории
+      const target = s.gpot + 0.5 * fEff + 0.1 * milExtra - 0.25 * tight + spill + oilEff + m.g + P.cycAmp * this.cyc * c.openness
+        + P.gNoise * (c.income === 'LIC' ? P.volLIC : c.income === 'HIC' ? P.volHIC : 1) * this.gs(i, 1);
+      s.gc += P.gAdj * (target - s.gc);
+      s.g = s.gc + 12 * dLevel;
+      newG[i] = s.g;
+      s.gdp *= 1 + s.gc / 1200 + dLevel / 100;
+      s.pop *= 1 + s.popGrowth / 1200;
+
+      // инфляция
+      const oilInfl = P.oilInfl * (p - 1) * Math.max(e, 0);
+      const tarInfl = 0.15 * (c.imports / 100) * impTar * 0.5;
+      const inflT = s.anchor + 0.25 * (s.gc - s.gpot) + 0.35 * fEff + oilInfl + tarInfl - 0.3 * tight + m.infl;
+      s.infl = clamp(s.infl + P.inflAdj * (inflT - s.infl) + P.inflNoise * clamp(P.inflScale0 + P.inflScaleK * s.anchor, 0.2, 3) * this.gs(i, 2), -1.5, 90);
+
+      // безработица (закон Окуна)
+      s.unemp = clamp(s.unemp + (-P.okun * (s.gc - s.gpot) / 12) + 0.08 * (s.uN + m.unemp - s.unemp), 0.4, 50);
+
+      // госдолг
+      const deficit = s.deficit0 + fEff + (s.mil - s.mil0) + s.debt / 100 * Math.max(-3, s.r - s.r0);
+      s.debt = clamp(s.debt + (deficit - s.debt * (s.g + s.infl) / 100) / 12, 0, 400);
+      if (s.debt > 120 + 60 * c.ge && s.r - s.r0 > 2 && this.rnd(i, 3) < 0.01 * (s.debt / 150)) this.sovereignDefault(i);
+
+      // стабильность
+      const misery = Math.min(s.infl, 60) + s.unemp;
+      const stabT = clamp(s.stab0 - 0.008 * clamp(misery - s.misery0, -10, 80) - 0.12 * Math.min(1, s.warCount) - 0.3 * s.sanctionPressure * 0.4
+        - 0.5 * Math.max(0, s.protest - 0.1) + m.stab, 0.01, 0.99);
+      s.stab += 0.10 * (stabT - s.stab);
+    }
+    this.prevG = newG;
+
+    // граждане, политика, решения правительств
+    for (let i = 0; i < N; i++) updateCitizens(this, S[i], W.countries[i]);
+    for (let i = 0; i < N; i++) decide(this, i);
+
+    // отношения
+    for (let i = 0; i < N; i++) for (let j = i + 1; j < N; j++) {
+      const k = i * N + j;
+      const ties = Math.min(0.3, W.share[k] * 3 + W.share[j * N + i] * 3);
+      const tar = W.base[k] + ties - 0.9 * this.warMat[k] - 0.35 * (this.San[k] | this.San[j * N + i]) - 0.004 * (this.T[k] + this.T[j * N + i]) + this.aid[k] + this.aid[j * N + i];
+      const v = clamp(this.R[k] + 0.04 * (clamp(tar, -1, 1) - this.R[k]), -1, 1);
+      this.R[k] = this.R[j * N + i] = v;
+      this.aid[k] *= 0.95; this.aid[j * N + i] *= 0.95;
+    }
+    for (const [key, until] of this.truce) if (until <= t) this.truce.delete(key);
+
+    this.t++;
+    this.aggregate();
+    this.recordHistory();
+  }
+
+  sovereignDefault(i) {
+    const s = this.S[i];
+    s.debt *= 0.65; s.gdp *= 0.94; s.infl += 8; s.stab = Math.max(0.05, s.stab - 0.2); s.defaulted++;
+    this.log('default', `💥 Суверенный дефолт: ${this.nm(i)}`, [i], 4);
+  }
+
+  aggregate() {
+    let gdp = 0, g = 0, infl = 0, stab = 0, unemp = 0, pop = 0;
+    for (const s of this.S) { gdp += s.gdp; g += s.g * s.gdp; infl += s.infl * s.gdp; stab += s.stab * s.pop; unemp += s.unemp * s.pop; pop += s.pop; }
+    this.agg = { gdp, g: g / gdp, infl: infl / gdp, stab: stab / pop, unemp: unemp / pop, pop, wars: this.wars.length, oil: this.oil };
+  }
+
+  recordHistory() {
+    const a = this.agg, wh = this.wh;
+    wh.gdp.push(a.gdp); wh.g.push(a.g); wh.infl.push(a.infl); wh.oil.push(this.oil); wh.wars.push(a.wars); wh.stab.push(a.stab); wh.unemp.push(a.unemp);
+    for (const s of this.S) {
+      const h = s.hist;
+      h.gdp.push(s.gdp); h.g.push(s.g); h.infl.push(s.infl); h.unemp.push(s.unemp); h.stab.push(s.stab); h.sent.push(s.sent); h.debt.push(s.debt);
+      if (h.gdp.length > HIST) for (const k in h) h[k].shift();
+    }
+    for (const k in wh) if (wh[k].length > HIST) wh[k].shift();
+  }
+
+  date() {
+    const m = this.t % 12, y = this.startYear + Math.floor(this.t / 12);
+    return ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'][m] + ' ' + y;
+  }
+
+  // значение метрики для раскраски/таблиц
+  metric(i, key, base) {
+    const s = this.S[i];
+    switch (key) {
+      case 'g': return s.g;
+      case 'gdp': return s.gdp;
+      case 'gdpPc': return s.gdp / s.pop;
+      case 'infl': return s.infl;
+      case 'unemp': return s.unemp;
+      case 'debt': return s.debt;
+      case 'stab': return s.stab;
+      case 'sent': return s.sent;
+      case 'mil': return s.mil;
+      case 'protest': return s.protest;
+      case 'dGdp': return base ? (s.gdp / base.S[i].gdp - 1) * 100 : 0;
+      case 'dStab': return base ? (s.stab - base.S[i].stab) * 100 : 0;
+      case 'dUnemp': return base ? s.unemp - base.S[i].unemp : 0;
+      case 'dInfl': return base ? s.infl - base.S[i].infl : 0;
+    }
+    return 0;
+  }
+}

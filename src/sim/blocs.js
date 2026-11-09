@@ -24,7 +24,7 @@ export const RIVALRIES = [
   ['USA', 'RUS', -0.5], ['USA', 'CHN', -0.35], ['USA', 'IRN', -0.8], ['USA', 'PRK', -0.9], ['RUS', 'UKR', -0.9],
   ['IND', 'PAK', -0.75], ['ISR', 'IRN', -0.9], ['CHN', 'TWN', -0.75], ['CHN', 'IND', -0.4], ['KOR', 'PRK', -0.85],
   ['JPN', 'PRK', -0.7], ['ARM', 'AZE', -0.65], ['ETH', 'ERI', -0.4], ['SAU', 'IRN', -0.55], ['GRC', 'TUR', -0.35],
-  ['MAR', 'DZA', -0.5], ['CHN', 'JPN', -0.35], ['CHN', 'PHL', -0.4], ['CHN', 'VNM', -0.3], ['RUS', 'POL', -0.55],
+  ['MAR', 'DZA', -0.5], ['SRB', 'XKX', -0.5], ['CHN', 'JPN', -0.35], ['CHN', 'PHL', -0.4], ['CHN', 'VNM', -0.3], ['RUS', 'POL', -0.55],
   ['RUS', 'EST', -0.5], ['RUS', 'LVA', -0.5], ['RUS', 'LTU', -0.5], ['RUS', 'FIN', -0.4], ['RUS', 'GEO', -0.5],
   ['ISR', 'LBN', -0.6], ['ISR', 'SYR', -0.6], ['ISR', 'PSE', -0.8], ['SDN', 'SSD', -0.4], ['RWA', 'COD', -0.5],
   ['EGY', 'ETH', -0.35], ['AFG', 'PAK', -0.45], ['VEN', 'GUY', -0.45], ['KOR', 'JPN', -0.15], ['IND', 'BGD', -0.1],

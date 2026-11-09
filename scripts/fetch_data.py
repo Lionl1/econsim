@@ -59,9 +59,14 @@ MANUAL = {
                 wgiVA=-2.2, wgiPV=-0.1, wgiGE=-1.8, wgiCC=-1.6),
 }
 
-def fetch_indicator(item):
+# world-countries -> коды World Bank (у Косово в world-countries временный код UNK и нет числового)
+ISO_FIX = {"UNK": "XKX"}
+NAME_RU_FIX = {"XKX": "Косово"}
+EXTRA = ("TWN", "PSE", "UNK")   # частично признанные, но самостоятельные экономики
+
+def fetch_indicator(item, country="all"):
     key, code = item
-    url = f"https://api.worldbank.org/v2/country/all/indicator/{code}?format=json&per_page=400&mrnev=1"
+    url = f"https://api.worldbank.org/v2/country/{country}/indicator/{code}?format=json&per_page=400&mrnev=1"
     data = json.loads(get(url))
     out = {}
     if len(data) < 2 or not data[1]:
@@ -76,7 +81,7 @@ def fetch_indicator(item):
 def main():
     wc = json.loads(get("https://cdn.jsdelivr.net/npm/world-countries@5.1.0/countries.json"))
     # Тайвань и Палестина формально без полного признания, но нужны как самостоятельные акторы модели
-    wc = [c for c in wc if (c.get("independent") or c["cca3"] in ("TWN", "PSE")) and c.get("ccn3")]
+    wc = [c for c in wc if (c.get("independent") and c.get("ccn3")) or c["cca3"] in EXTRA]
     print(f"independent countries with numeric code: {len(wc)}")
 
     with ThreadPoolExecutor(8) as ex:
@@ -90,19 +95,19 @@ def main():
 
     countries = []
     for c in sorted(wc, key=lambda x: x["name"]["common"]):
-        iso = c["cca3"]
+        iso = ISO_FIX.get(c["cca3"], c["cca3"])
         rec = {
             "iso3": iso,
             "iso2": c["cca2"],
-            "num": c["ccn3"],
+            "num": c.get("ccn3") or "",
             "name": c["name"]["common"],
-            "nameRu": c.get("translations", {}).get("rus", {}).get("common") or c["name"]["common"],
+            "nameRu": NAME_RU_FIX.get(iso) or c.get("translations", {}).get("rus", {}).get("common") or c["name"]["common"],
             "region": c.get("region"),
             "subregion": c.get("subregion"),
             "lat": c["latlng"][0] if c.get("latlng") else 0,
             "lon": c["latlng"][1] if c.get("latlng") else 0,
             "area": c.get("area") or 0,
-            "borders": c.get("borders", []),
+            "borders": [ISO_FIX.get(b, b) for b in c.get("borders", [])],
             "landlocked": c.get("landlocked", False),
             "unMember": bool(c.get("unMember")),
             "imputed": [],
@@ -157,5 +162,38 @@ def main():
     miss = [r["iso3"] for r in countries if len(r["imputed"]) > 6]
     print("heavily imputed:", miss)
 
+def add_one(cca3):
+    """Добавить/обновить одну страну в существующем countries.json, не перекачивая остальные
+    (импутация — медианой региона по уже сохранённым данным)."""
+    path = OUT / "countries.json"
+    countries = json.loads(path.read_text())
+    wc = {c["cca3"]: c for c in json.loads(get("https://cdn.jsdelivr.net/npm/world-countries@5.1.0/countries.json"))}
+    c = wc[cca3]; iso = ISO_FIX.get(cca3, cca3)
+    wb = json.loads(get(f"https://api.worldbank.org/v2/country/{iso}?format=json"))[1][0]
+    rec = {"iso3": iso, "iso2": c["cca2"], "num": c.get("ccn3") or "", "name": c["name"]["common"],
+           "nameRu": NAME_RU_FIX.get(iso) or c["translations"]["rus"]["common"], "region": c.get("region"), "subregion": c.get("subregion"),
+           "lat": c["latlng"][0], "lon": c["latlng"][1], "area": c.get("area") or 0,
+           "borders": [ISO_FIX.get(b, b) for b in c.get("borders", [])], "landlocked": c.get("landlocked", False),
+           "unMember": bool(c.get("unMember")), "imputed": [], "income": wb["incomeLevel"]["id"],
+           "capLat": float(wb["latitude"]), "capLon": float(wb["longitude"]), "capital": wb.get("capitalCity") or ""}
+    years = {}
+    for key, code in INDICATORS.items():
+        hit = fetch_indicator((key, code), iso)[1].get(iso)
+        if hit:
+            rec[key], years[key] = hit
+        else:
+            vals = [r[key] for r in countries if r["region"] == rec["region"] and key not in r["imputed"]]
+            rec[key] = statistics.median(vals); rec["imputed"].append(key)
+    rec["years"] = years
+    countries = [r for r in countries if r["iso3"] != iso] + [rec]
+    for r in countries:
+        r["borders"] = [ISO_FIX.get(b, b) for b in r["borders"]]
+    countries.sort(key=lambda r: r["name"])
+    path.write_text(json.dumps(countries, ensure_ascii=False, indent=0))
+    print(f"added {iso}: imputed {rec['imputed']}; total {len(countries)}")
+
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) > 2 and sys.argv[1] == "--add":
+        add_one(sys.argv[2])
+    else:
+        main()

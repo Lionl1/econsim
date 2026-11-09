@@ -12,6 +12,22 @@ export function latLonToVec3(lat, lon, r = 1) {
   return new THREE.Vector3(r * Math.cos(la) * Math.cos(lo), r * Math.sin(la), -r * Math.cos(la) * Math.sin(lo));
 }
 
+// Полигоны Natural Earth, у которых нет своей страны в модели: зависимые территории и спорные районы
+// окрашиваются по государству, к которому их относит World Bank. Остальные (Антарктида, Западная Сахара,
+// ледник Сиачен) рисуются штриховкой как не моделируемые.
+const TERRITORY = {
+  'N. Mariana Is.': 'USA', 'U.S. Virgin Is.': 'USA', 'Guam': 'USA', 'American Samoa': 'USA', 'Puerto Rico': 'USA',
+  'S. Geo. and the Is.': 'GBR', 'Br. Indian Ocean Ter.': 'GBR', 'Saint Helena': 'GBR', 'Pitcairn Is.': 'GBR', 'Anguilla': 'GBR',
+  'Falkland Is.': 'GBR', 'Cayman Is.': 'GBR', 'Bermuda': 'GBR', 'British Virgin Is.': 'GBR', 'Turks and Caicos Is.': 'GBR',
+  'Montserrat': 'GBR', 'Jersey': 'GBR', 'Guernsey': 'GBR', 'Isle of Man': 'GBR',
+  'Niue': 'NZL', 'Cook Is.': 'NZL', 'Aruba': 'NLD', 'Curaçao': 'NLD', 'Sint Maarten': 'NLD',
+  'St. Pierre and Miquelon': 'FRA', 'Wallis and Futuna Is.': 'FRA', 'St-Martin': 'FRA', 'St-Barthélemy': 'FRA',
+  'Fr. Polynesia': 'FRA', 'New Caledonia': 'FRA', 'Fr. S. Antarctic Lands': 'FRA',
+  'Åland': 'FIN', 'Greenland': 'DNK', 'Faeroe Is.': 'DNK', 'Macao': 'CHN', 'Hong Kong': 'CHN',
+  'Indian Ocean Ter.': 'AUS', 'Heard I. and McDonald Is.': 'AUS', 'Norfolk Island': 'AUS',
+  'Somaliland': 'SOM', 'N. Cyprus': 'CYP', 'Kosovo': 'XKX',
+};
+
 export class Globe {
   constructor(container, world, topo, { onHover, onClick }) {
     this.container = container; this.world = world; this.onHover = onHover; this.onClick = onClick;
@@ -31,11 +47,15 @@ export class Globe {
     const proj = geoEquirectangular().scale(TW / (2 * Math.PI)).translate([TW / 2, TH / 2]);
     const gp = geoPath(proj);
     const feats = feature(topo, topo.objects.countries).features;
-    const byNum = new Map(this.world.countries.map(c => [c.num, c.i]));
+    const byNum = new Map(this.world.countries.filter(c => c.num).map(c => [c.num, c.i]));
+    const byIso = iso => this.world.idx.get(iso) ?? -1;
     this.polys = feats.map(f => {
       const p = new Path2D();
       geoPath(proj, p)(f);
-      return { path: p, idx: f.id != null ? (byNum.get(String(f.id).padStart(3, '0')) ?? -1) : -1 };
+      const name = f.properties?.name;
+      let idx = f.id != null ? (byNum.get(String(f.id).padStart(3, '0')) ?? -1) : -1;
+      if (idx < 0 && TERRITORY[name]) idx = byIso(TERRITORY[name]);       // зависимые территории -> государство
+      return { path: p, idx, unmodeled: idx < 0 };
     });
     this.graticule = new Path2D(); geoPath(proj, this.graticule)(geoGraticule10());
     this.proj = proj;
@@ -51,8 +71,15 @@ export class Globe {
     const ctx = this.ctx;
     ctx.fillStyle = '#0a1424'; ctx.fillRect(0, 0, TW, TH);
     ctx.strokeStyle = 'rgba(120,160,220,.07)'; ctx.lineWidth = 1.2; ctx.stroke(this.graticule);
+    this.hatch ??= (() => {      // штриховка для территорий вне модели (Антарктида, Западная Сахара, ледник Сиачен)
+      const cv = document.createElement('canvas'); cv.width = cv.height = 12;
+      const x = cv.getContext('2d'); x.fillStyle = '#1c2433'; x.fillRect(0, 0, 12, 12);
+      x.strokeStyle = '#2c374b'; x.lineWidth = 2; x.beginPath(); x.moveTo(0, 12); x.lineTo(12, 0); x.stroke();
+      return ctx.createPattern(cv, 'repeat');
+    })();
     for (const p of this.polys) {
-      const c = p.idx >= 0 ? this.colors[p.idx] : [38, 46, 62];
+      if (p.unmodeled) { ctx.fillStyle = this.hatch; ctx.fill(p.path); continue; }
+      const c = this.colors[p.idx];
       ctx.fillStyle = `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`;
       ctx.fill(p.path);
     }

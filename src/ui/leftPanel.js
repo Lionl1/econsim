@@ -1,6 +1,8 @@
 // Левая панель: готовые сценарии, конструктор, источники данных.
 import { PRESETS, SHOCK_VARS } from '../sim/scenarios.js';
 import { targetSelectHtml, describeEffect } from './targets.js';
+import { parseEvent } from '../sim/nlp.js';
+import { fmtMoney } from './colors.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 
@@ -10,7 +12,7 @@ export function initLeft(app) {
     document.querySelectorAll('#tabs button').forEach(x => x.classList.toggle('on', x === b));
     document.querySelectorAll('#left .tab').forEach(x => x.classList.toggle('on', x.id === 'tab-' + b.dataset.tab));
   });
-  initScenarios(app); initBuilder(app); initSources(app);
+  initScenarios(app); initBuilder(app); initPrompt(app); initSources(app);
 }
 
 // ---------- вкладка «Сценарии» ----------
@@ -89,6 +91,10 @@ function initBuilder(app) {
     root.querySelectorAll('[data-del]').forEach(b => b.onclick = () => { draft.effects.splice(+b.dataset.del, 1); renderList(); });
   };
   renderList();
+  app.loadDraft = d => {
+    draft.effects = d.effects.map(e => ({ ...e })); $('#b-title').value = d.title; $('#b-dur').value = d.duration; $('#b-start').value = d.delay || 0; renderList();
+    document.querySelector('#tabs [data-tab=build]').click();
+  };
 
   $('#b-add').onclick = () => {
     const k = v('b-kind'), n = x => parseFloat(v(x));
@@ -120,6 +126,79 @@ function initBuilder(app) {
       draft.effects = d.effects; $('#b-title').value = d.title || 'Мой сценарий'; $('#b-dur').value = d.duration ?? 12; renderList(); app.toast('Загружено');
     } catch (err) { app.toast('Ошибка JSON: ' + err.message); }
   };
+}
+
+// ---------- вкладка «Промт»: событие свободным текстом ----------
+const EXAMPLES = [
+  'Россия нападает на Украину',
+  'США вводят пошлины 50% против Китая',
+  'Мощное землетрясение в Японии',
+  'Нефть падает на 40% на год',
+  'Китай вторгается на Тайвань через 6 месяцев',
+  'Банковский кризис в Германии',
+  'Переворот в Саудовской Аравии',
+  'Технологический бум в Индии на 3 года',
+  'Санкции против Ирана',
+  'Эмбарго ЕС на Турцию и рост военных расходов Польши',
+];
+function initPrompt(app) {
+  const root = $('#tab-prompt'), T = app.T;
+  let parsed = null;
+  root.innerHTML = `
+    <h3>Опишите событие</h3>
+    <div class="form"><textarea id="p-text" rows="3" placeholder="Например: Китай вводит блокаду Тайваня, нефть +30% на год"></textarea>
+      <div class="r2"><button id="p-parse">Разобрать</button><button class="primary" id="p-run">▶ Разобрать и запустить</button></div></div>
+    <div id="p-res"></div>
+    <h3>Примеры</h3><div id="p-ex"></div>
+    <h3>Влияние на мир</h3><div id="p-impact"></div>
+    <h3>История запросов</h3><div id="p-hist" class="hint">Пока пусто.</div>`;
+  $('#p-ex').innerHTML = EXAMPLES.map(x => `<button class="small chip" style="margin:0 4px 4px 0">${x}</button>`).join('');
+  root.querySelectorAll('#p-ex .chip').forEach(b => b.onclick = () => { $('#p-text').value = b.textContent; doParse(); });
+  const lab = sel => T.label(sel);
+  const doParse = () => {
+    const txt = $('#p-text').value.trim(); if (!txt) return null;
+    parsed = parseEvent(txt, app.world, lab);
+    if (!parsed.ok) { $('#p-res').innerHTML = `<div class="card"><div class="d">${parsed.notes.join('<br>')}</div></div>`; return null; }
+    $('#p-res').innerHTML = `<div class="card"><div class="t">${parsed.title}</div>
+      <div class="d">Распознано: ${parsed.recognized.join(', ')}${parsed.entities.length ? ' · цели: ' + parsed.entities.join(', ') : ''}</div>
+      ${parsed.effects.map(e => `<div class="hint">• ${describeEffect(T, e)}</div>`).join('')}
+      ${parsed.notes.map(n => `<div class="hint" style="color:var(--warn,#f5a524)">⚠ ${n}</div>`).join('')}
+      <div class="form" style="margin-top:8px"><div class="r2"><div><label>Длительность, мес. (0 = пока не закончится)</label><input id="p-dur" type="number" min="0" max="240" value="${parsed.duration}"></div>
+        <div><label>Старт через, мес.</label><input id="p-delay" type="number" min="0" max="120" value="${parsed.delay}"></div></div>
+        <div class="r2"><button class="primary small" id="p-go">▶ Запустить</button><button class="small" id="p-edit">Править в конструкторе</button></div></div></div>`;
+    $('#p-go').onclick = go; $('#p-edit').onclick = () => app.loadDraft({ title: parsed.title, duration: +$('#p-dur').value, delay: +$('#p-delay').value, effects: parsed.effects });
+    return parsed;
+  };
+  const hist = [];
+  const go = () => {
+    if (!parsed?.ok) return;
+    const def = { title: parsed.title, duration: Math.max(0, +$('#p-dur').value || 0), effects: parsed.effects.map(e => ({ ...e })) };
+    app.launch(def, +$('#p-delay').value || 0);
+    hist.unshift($('#p-text').value.trim());
+    $('#p-hist').innerHTML = hist.slice(0, 8).map(h => `<div class="hint" style="cursor:pointer" data-h="${encodeURIComponent(h)}">↻ ${h}</div>`).join('');
+    root.querySelectorAll('[data-h]').forEach(el => el.onclick = () => { $('#p-text').value = decodeURIComponent(el.dataset.h); doParse(); });
+    app.refreshImpact();
+  };
+  $('#p-parse').onclick = doParse;
+  $('#p-run').onclick = () => { if (doParse()) go(); };
+  $('#p-text').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); if (doParse()) go(); } });
+
+  app.refreshImpact = () => {
+    const box = $('#p-impact'), { sim, base, world } = app;
+    if (!sim.scenarios.length && sim.t === 0) { box.innerHTML = '<div class="hint">Запустите событие и нажмите «Пуск»: здесь появится разница с миром без вмешательств.</div>'; return; }
+    const dG = (sim.agg.gdp / base.agg.gdp - 1) * 100, dI = sim.agg.infl - base.agg.infl, dU = sim.agg.unemp - base.agg.unemp, dS = (sim.agg.stab - base.agg.stab) * 100;
+    const rows = world.countries.map(c => ({ c, d: (sim.S[c.i].gdp / base.S[c.i].gdp - 1) * 100, big: sim.S[c.i].gdp })).filter(r => Number.isFinite(r.d));
+    const rel = rows.filter(r => r.big > 5e9).sort((a, b) => a.d - b.d);
+    const cls = v => (v >= 0 ? 'pos' : 'neg'), f = (v, u = '') => (v > 0 ? '+' : '') + v.toFixed(2) + u;
+    const li = a => a.map(r => `<div class="eff"><span>${r.c.nameRu}</span><span class="${cls(r.d)}">${f(r.d, '%')}</span></div>`).join('');
+    box.innerHTML = `<div class="card"><div class="row"><span>ВВП мира</span><b class="${cls(dG)}">${f(dG, '%')}</b></div>
+      <div class="row"><span>Инфляция мира</span><b class="${cls(-dI)}">${f(dI, ' п.п.')}</b></div>
+      <div class="row"><span>Безработица</span><b class="${cls(-dU)}">${f(dU, ' п.п.')}</b></div>
+      <div class="row"><span>Стабильность</span><b class="${cls(dS)}">${f(dS, ' п.п.')}</b></div>
+      <div class="row"><span>Войн (база → сейчас)</span><b>${base.agg.wars} → ${sim.agg.wars}</b></div></div>
+      <div class="hint">Больше всех теряют</div>${li(rel.slice(0, 5))}<div class="hint" style="margin-top:6px">Больше всех выигрывают</div>${li(rel.slice(-5).reverse())}`;
+  };
+  app.refreshImpact();
 }
 
 // ---------- вкладка «Данные» ----------

@@ -151,7 +151,7 @@ async function boot() {
     if (force || now - lastUi > 250) {
       refreshHud(); refreshFeed(); app.right.update(); refreshOverlay(); lastUi = now;
     }
-    if (force || now - lastSlow > 800) { app.refreshActive(); lastSlow = now; }
+    if (force || now - lastSlow > 800) { app.refreshActive(); app.refreshImpact?.(); lastSlow = now; }
   }
 
   // ---------- главный цикл ----------

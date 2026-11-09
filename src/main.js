@@ -64,10 +64,11 @@ async function boot() {
     const chip = $('#mode-chip');
     if (!app.cal) { chip.innerHTML = ''; return; }
     const n = app.cal.removed.size;
-    chip.innerHTML = `🗓 История с ${app.cal.startYear} · на глобусе: <b>${app.swapped ? 'без событий' : 'как было'}</b>`
-      + `<span style="color:var(--mute)"> · сравнение: ${app.swapped ? 'как было' : n ? `без ${n} событ${n === 1 ? 'ия' : 'ий'}` : 'то же самое'}</span>`
-      + '<button id="mc-swap" title="Поменять миры местами">⇄</button><button id="mc-exit" title="Вернуться в сегодняшний мир">✕</button>';
-    $('#mc-swap').onclick = app.swapWorlds;
+    chip.innerHTML = `🗓 История с ${app.cal.startYear}`
+      + (n ? `<span class="seg"><button data-w="real" class="${app.swapped ? '' : 'on'}">Как было</button><button data-w="cf" class="${app.swapped ? 'on' : ''}">Без событий</button></span>` : '')
+      + '<button id="mc-res">Результат</button><button id="mc-exit">Выйти в сегодня</button>';
+    chip.querySelectorAll('[data-w]').forEach(b => b.onclick = () => { if ((b.dataset.w === 'cf') !== app.swapped) app.swapWorlds(); });
+    $('#mc-res').onclick = () => app.openCalendarResult ? (app.openCalendarResult(), app.openTab('cal')) : app.openTab('cal');
     $('#mc-exit').onclick = () => { app.setStartYear(2026, null); app.toast('Вернулись в сегодняшний мир'); };
   };
   app.newSims();
@@ -138,6 +139,14 @@ async function boot() {
   addEventListener('keydown', e => { if (e.code === 'Space' && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) { e.preventDefault(); setRunning(!app.running); } });
   $('#feed-minor').onchange = e => { app.feedMinor = e.target.checked; app.lastFeedId = -1; refreshFeed(); };
   $('#feed-toggle').onclick = () => $('#dock').classList.toggle('feed-open');
+  // calendar mode: clicking a year or an event icon on the timeline travels there
+  $('#timeline').onclick = e => {
+    if (!app.cal) return;
+    const icon = e.target.closest('#tl-cal span');
+    const r = $('#timeline').getBoundingClientRect();
+    const y = icon ? +icon.dataset.y : Math.floor(2000 + (e.clientX - r.left) / r.width * 32);
+    app.calendarTravel(Math.max(2000, Math.min(2025, y)));
+  };
 
   function stepOnce() { app.sim.step(); app.base.step(); }
 
@@ -169,15 +178,27 @@ async function boot() {
       const cls = !show || !d.good ? '' : (dv > 0) === (d.good > 0) ? 'pos' : 'neg';
       return `<div class="kpi${d.alert?.(a) ? ' alert' : ''}"><span class="k">${d.k}</span><span class="kv">${d.v(a, sim)}${show ? `<span class="kd ${cls}">${dv > 0 ? '+' : ''}${dv.toFixed(Math.abs(dv) >= 10 ? 0 : 2)}${d.u}</span>` : ''}</span>${spark(d.h(sim.wh), sim.scenarios.length ? d.h(base.wh) : null, d.c)}</div>`;
     }).join('');
-    // timeline: the horizon grows as the simulation runs
-    const horizon = Math.max(240, Math.ceil((sim.t + 1) / 120) * 120);
-    $('#tl-fill').style.width = (sim.t / horizon * 100) + '%';
-    const years = horizon / 12, stepY = years > 30 ? 10 : 5;
-    let ys = ''; for (let y = 0; y <= years; y += stepY) ys += `<span style="left:${y / years * 100}%">${sim.startYear + y}</span>`;
+    // timeline. Normal mode: from the start, the horizon grows as the simulation runs.
+    // Calendar mode: the whole calendar 2000–2031, years before the start hatched, events as icons on their dates.
+    const cal = app.cal, T0 = cal ? 2000 : sim.startYear;
+    const span = cal ? (2032 - 2000) * 12 : Math.max(240, Math.ceil((sim.t + 1) / 120) * 120);
+    const off = cal ? (sim.startYear - 2000) * 12 : 0, pos = m => Math.min(100, (off + m) / span * 100);
+    document.body.classList.toggle('cal-mode', !!cal);
+    $('#timeline').title = cal ? 'Клик по году или событию — перенестись туда' : '';
+    $('#tl-pre').style.width = (off / span * 100) + '%';
+    $('#tl-fill').style.left = (off / span * 100) + '%';
+    $('#tl-fill').style.width = (pos(sim.t) - off / span * 100) + '%';
+    const years = span / 12, stepY = cal ? 5 : years > 30 ? 10 : 5;
+    let ys = ''; for (let y = 0; y <= years; y += stepY) ys += `<span style="left:${y / years * 100}%">${T0 + y}</span>`;
     $('#tl-years').innerHTML = ys;
-    const marks = sim.events.filter(e => ['war', 'scenario', 'fx', 'default', 'peace'].includes(e.kind) && e.sev >= 3).slice(-60);
+    const marks = sim.events.filter(e => ['war', 'scenario', 'fx', 'default', 'peace'].includes(e.kind) && e.sev >= 3 && !(cal && e.kind === 'scenario')).slice(-60);
     const col = { war: '#ff5c6c', scenario: '#5b9cff', fx: '#ffb547', default: '#ff8a3d', peace: '#2fd3a7' };
-    $('#tl-marks').innerHTML = marks.map(e => `<i style="left:${e.t / horizon * 100}%;background:${col[e.kind]}" title="${esc(e.text)}"></i>`).join('');
+    $('#tl-marks').innerHTML = marks.map(e => `<i style="left:${pos(e.t)}%;background:${col[e.kind]}" title="${esc(e.text)}"></i>`).join('');
+    const calHtml = cal ? CALENDAR.map(ev => {
+      const m = monthOf(ev, 2000), past = +ev.date.slice(0, 4) < cal.startYear, off2 = cal.removed.has(ev.id) && !past;
+      return `<span data-y="${ev.date.slice(0, 4)}" class="${past ? 'past' : ''}${off2 ? ' off' : ''}" style="left:${m / span * 100}%" title="${ev.date.replace('-', '.')} · ${esc(ev.title)}${past ? ' (до старта)' : off2 ? ' — убрано в мире-сравнении' : ''}\nКлик — перенестись в ${ev.date.slice(0, 4)}">${ev.icon}</span>`;
+    }).join('') : '';
+    if ($('#tl-cal').innerHTML !== calHtml) $('#tl-cal').innerHTML = calHtml;
   }
 
   function refreshOverlay() {

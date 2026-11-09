@@ -16,6 +16,13 @@ You can also run "what if" scenarios — presets, a builder, or a plain-language
 
 > ⚠ This is an educational model, not a forecast. See [Limitations](#limitations).
 
+## Documentation
+
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — system design: runtimes, module map, data flow, the monthly step, state, determinism, scenarios, ensembles, UI loop, performance, design decisions
+- [docs/MODEL.md](docs/MODEL.md) — every equation, parameters with sources, calibration and validation results, known limitations
+- [docs/DATA.md](docs/DATA.md) — sources, fetch pipeline, file formats, coverage and data-quality notes
+- [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) — setup, commands, checks before committing, how to add events, presets, metrics, effects and parameters
+
 ## Quick start
 
 ```bash
@@ -135,7 +142,8 @@ src/ui/                     globe, panels, charts, evaluation window
 src/sim/                    simulation (no DOM; also runs in Node and in a Web Worker)
 scripts/                    data fetchers (Python), calibration, backtests, tests (Node)
 public/data/                datasets loaded by the app
-data/                       caches used for calibration and trade rebuilds
+data/                       Comtrade download cache (trade rebuilds)
+docs/                       architecture, model, data and development docs
 ```
 
 ## License

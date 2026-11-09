@@ -75,7 +75,7 @@ The World Bank "World" inflation series uses its own aggregation; when comparing
 
 `exports[i][j]` is goods exports from `i` to `j`. A flow is taken from the importer's report (CIF converted to FOB by ÷1.06) and otherwise from the exporter's report. At build time (`world.js`) pairs reported by neither side get a gravity estimate scaled to the exporter's observed flows, and every row is scaled to World Bank total exports (goods + services). Taiwan is Comtrade's "Other Asia, nes" (code 490).
 
-The committed snapshot has 122 import and 121 export reporters: the public API started refusing requests before the US, UK, Vietnam and a few others were fetched. Their flows are covered from their partners' reports and gravity; `npm run trade` completes the set when the quota allows.
+The committed snapshot has 123 import and 122 export reporters, the US included: the public API rate-limits, and the UK, Russia, Mexico, Turkey, Vietnam and a few others are still missing (Taiwan does not report). Their flows are covered from their partners' reports and gravity; `npm run trade` completes the set when the quota allows.
 
 ### `markets.json`
 

@@ -29,7 +29,8 @@
     "history": "python3 scripts/fetch_history.py",
     "trade": "python3 scripts/fetch_trade.py",
     "markets": "python3 scripts/fetch_markets.py",
-    "sim": "node scripts/headless.mjs"
+    "sim": "node scripts/headless.mjs",
+    "calendar": "node scripts/calendar-check.mjs"
   },
   "dependencies": {
     "d3-geo": "^3.1.2",

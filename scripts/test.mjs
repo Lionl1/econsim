@@ -5,6 +5,10 @@ import { Sim } from '../src/sim/engine.js';
 import { PRESETS } from '../src/sim/scenarios.js';
 import { parseEvent } from '../src/sim/nlp.js';
 import { runEnsemble } from '../src/sim/ensemble.js';
+import { CALENDAR, monthOf } from '../src/sim/calendar.js';
+import { buildWorld } from '../src/sim/world.js';
+import { loadData } from './load.mjs';
+import fs from 'node:fs';
 
 const world = loadWorld(), N = world.N, I = iso => world.idx.get(iso);
 let passed = 0;
@@ -97,6 +101,26 @@ test('markets: currencies, crypto, companies, peace', () => {
 test('declined country names', () => {
   assert.deepEqual(parts('Землетрясение в Южной Корее')[0].effects[0].targets, ['iso:KOR']);
   assert.deepEqual(parts('Санкции против Боснии и Герцеговины')[0].effects[0].to, ['iso:BIH']);
+});
+
+console.log('calendar');
+test('a 2019 world without COVID grows in 2020, the real one shrinks', () => {
+  const d = loadData(), history = JSON.parse(fs.readFileSync(new URL('../public/data/history.json', import.meta.url)));
+  const w = buildWorld(d.raw, { ...d, history, startYear: 2019 });
+  assert.equal(w.startYear, 2019);
+  assert.ok(Math.abs(w.countries[w.idx.get('USA')].gdp / history.USA.gdp['2018'] - 1) < 1e-9, 'US GDP from 2018 data');
+  const a = new Sim(w, { seed: 4 }), b = new Sim(w, { seed: 4 });
+  for (const ev of CALENDAR) {
+    const start = monthOf(ev, 2019); if (start < 0) continue;
+    const def = { title: ev.title, duration: ev.duration, start, effects: ev.effects };
+    a.addScenario(def); if (ev.id !== 'covid') b.addScenario(def);
+  }
+  for (let m = 0; m < 12; m++) { a.step(); b.step(); }
+  const a0 = a.agg.gdp, b0 = b.agg.gdp;
+  for (let m = 0; m < 12; m++) { a.step(); b.step(); }
+  assert.ok(a.agg.gdp / a0 < 1, '2020 shrinks with COVID');
+  assert.ok(b.agg.gdp / b0 > 1.01, '2020 grows without COVID');
+  finite(a, 'calendar');
 });
 
 console.log('ensemble');

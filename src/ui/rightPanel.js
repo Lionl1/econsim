@@ -161,11 +161,17 @@ export class RightPanel {
         <div class="hint" style="margin-top:4px">Базовый мир модели опирается на эти прогнозы. В паритетах покупательной способности IMF даёт ${Object.values(world.worldForecastPPP || {}).slice(0, 1).map(v => v + '%').join('')} на 2026 г.</div>`;
     } else {
       const m = this.rkMode, has = sim.scenarios.length > 0;
-      const val = i => m === 'g' ? sim.S[i].g : m === 'dGdp' ? sim.metric(i, 'dGdp', base) : m === 'fx' ? -pc(sim.S[i].e) / (1 + pc(sim.S[i].e) / 100) : pc(sim.S[i].eq);
-      const arr = sim.S.filter(s => s.gdp > 3e9 && (m !== 'eq' || s.mcapGdp > 0.1) && (m !== 'fx' || s.regime !== 'anchor')).map(s => ({ i: s.i, v: val(s.i) })).sort((x, y) => y.v - x.v);
-      const row = ({ i, v }) => `<div class="rel" data-i="${i}"><span>${flag(world.countries[i].iso2)} ${esc(world.countries[i].nameRu)}</span><span class="rv ${v >= 0 ? 'pos' : 'neg'}">${v > 0 ? '+' : ''}${v.toFixed(1)}%</span></div>`;
-      $('#w-rk-t').textContent = { g: 'Рост ВВП, %', dGdp: has ? 'Кто выиграл / проиграл от сценария' : 'Δ к базе (запустите сценарий)', fx: 'Валюты к $ с начала', eq: 'Биржи с начала' }[m];
-      $('#w-rk').innerHTML = arr.slice(0, 8).map(row).join('') + '<div style="height:8px;border-bottom:1px dashed var(--line);margin-bottom:8px"></div>' + arr.slice(-8).reverse().map(row).join('');
+      // рост — за последние 12 мес. (мгновенный месячный темп слишком шумный), до года — в годовом выражении с начала
+      const g12 = s => { const h = s.hist.gdp, n = h.length - 1, k = Math.min(12, n); return k > 0 ? (Math.pow(h[n] / h[n - k], 12 / k) - 1) * 100 : s.g; };
+      const cur = s => (1 / Math.exp(s.e) - 1) * 100;                      // стоимость валюты в $, %
+      const val = s => m === 'g' ? g12(s) : m === 'dGdp' ? sim.metric(s.i, 'dGdp', base) : m === 'fx' ? cur(s) : pc(s.eq - s.e);
+      const sub = s => m === 'eq' ? `в местной ${pc(s.eq) > 0 ? '+' : ''}${pc(s.eq).toFixed(0)}%` : m === 'fx' ? esc(world.countries[s.i].currency.code) : m === 'g' ? fmtMoney(s.gdp) : '';
+      const arr = sim.S.filter(s => s.gdp > 1e10 && (m !== 'eq' || s.mcapGdp > 0.1) && (m !== 'fx' || (s.regime !== 'anchor' && s.regime !== 'union' && s.regime !== 'dollarized')))
+        .map(s => ({ i: s.i, v: val(s), sub: sub(s) })).sort((x, y) => y.v - x.v);
+      const row = ({ i, v, sub }) => `<div class="rel" data-i="${i}"><span>${flag(world.countries[i].iso2)} ${esc(world.countries[i].nameRu)} <span class="sub2">${sub}</span></span><span class="rv ${v >= 0 ? 'pos' : 'neg'}">${v > 0 ? '+' : ''}${v.toFixed(1)}%</span></div>`;
+      $('#w-rk-t').textContent = { g: 'Рост ВВП за 12 месяцев', dGdp: has ? 'Кто выиграл / проиграл от сценария (ВВП к базе)' : 'ВВП к базе — запустите сценарий', fx: 'Валюты: стоимость в $ с начала', eq: 'Биржи: доходность в $ с начала' }[m];
+      $('#w-rk').innerHTML = `<div class="hint" style="margin-bottom:6px">${arr.length} экономик крупнее $10 млрд${m === 'fx' ? ' со своей валютой' : ''}. Сверху — лучшие, снизу — худшие.</div>`
+        + arr.slice(0, 8).map(row).join('') + '<div style="height:8px;border-bottom:1px dashed var(--line);margin-bottom:8px"></div>' + arr.slice(-8).map(row).join('');
       $('#w-rk').querySelectorAll('[data-i]').forEach(e => e.onclick = () => this.app.select(+e.dataset.i));
     }
   }

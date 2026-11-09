@@ -1,51 +1,73 @@
-// Ансамбль прогонов: сценарий vs базовый мир на нескольких сидах. Один прогон показывает в основном шум,
-// ансамбль — медиану эффекта и его разброс. Работает и в браузере (через воркер), и в Node.
+// Ансамбль прогонов: сценарий vs базовый мир на многих сидах. Три слоя неопределённости:
+//  1) случайные события (шоки роста, инфляции, курсов, рынков, решения агентов) — разные сиды;
+//  2) параметры модели — разыгрываются в диапазонах оценок из литературы (PRANGES), как выборки из
+//     апостериора в байесовских DSGE-моделях ФРС/ЕЦБ;
+//  3) величина события — логнормальный множитель с медианой 1 (σ=0.35: шок «−6%» ≈ от −3.4% до −10.6% в 80% случаев).
+// Базовый мир привязан к прогнозу IMF WEO; коридор базового роста сравнивается с ним (как фан-чарты IMF/Банка Англии).
 import { Sim } from './engine.js';
+import { P, PRANGES } from './params.js';
+import { hash, gauss } from './rng.js';
 
 const q = (arr, p) => { const a = [...arr].sort((x, y) => x - y); const k = (a.length - 1) * p, lo = Math.floor(k), hi = Math.ceil(k); return a[lo] + (a[hi] - a[lo]) * (k - lo); };
 const mean = a => a.reduce((x, y) => x + y, 0) / a.length;
+const SCALABLE = new Set(['shock', 'oil', 'tariff', 'relation', 'crypto', 'sector']);
 
-// scenarios: [{ def: {title, duration, effects}, delay }]
-export function runEnsemble(world, scenarios, { seeds = 20, months = 60, seed0 = 1, onProgress } = {}) {
-  const N = world.N;
-  const paths = { gdp: [], infl: [], unemp: [], wars: [] };      // [seed][month]
-  const finalC = Array.from({ length: N }, () => []);             // ΔВВП страны в конце, по сидам
-  const extraWars = [], warStarts = [];
-  for (let k = 0; k < seeds; k++) {
-    const seed = seed0 + k;
-    const base = new Sim(world, { seed }), sim = new Sim(world, { seed });
-    for (const s of scenarios) sim.addScenario({ ...s.def, effects: s.def.effects.map(e => ({ ...e })), start: s.delay || 0 });
-    const P = { gdp: [], infl: [], unemp: [], wars: [] };
-    let wb = 0, ws = 0;
-    for (let m = 0; m < months; m++) {
-      base.step(); sim.step();
-      P.gdp.push((sim.agg.gdp / base.agg.gdp - 1) * 100);
-      P.infl.push(sim.agg.infl - base.agg.infl);
-      P.unemp.push(sim.agg.unemp - base.agg.unemp);
-      P.wars.push(sim.agg.wars - base.agg.wars);
-      wb += base.agg.wars; ws += sim.agg.wars;
+export function runEnsemble(world, scenarios, { seeds = 20, months = 60, seed0 = 1, params = true, magnitude = true, onProgress } = {}) {
+  const N = world.N, saved = { ...P };
+  const keys = ['gdp', 'infl', 'unemp', 'wars', 'eq', 'btc', 'trade'];
+  const paths = Object.fromEntries(keys.map(k => [k, []]));
+  const finalC = Array.from({ length: N }, () => []), fxC = Array.from({ length: N }, () => []);
+  const warStarts = [], baseGrowth = [];               // [seed][год] — рост мира в базовом прогоне, %
+  try {
+    for (let k = 0; k < seeds; k++) {
+      const seed = seed0 + k;
+      Object.assign(P, saved);
+      if (params) for (const [name, [lo, hi]] of Object.entries(PRANGES)) P[name] = lo + (hi - lo) * hash(seed, 777, 1, name.length * 31 + name.charCodeAt(0) + name.charCodeAt(name.length - 1));
+      const base = new Sim(world, { seed }), sim = new Sim(world, { seed });
+      scenarios.forEach((s, si) => sim.addScenario({ ...s.def, start: s.delay || 0, effects: s.def.effects.map((e, ei) => {
+        if (!magnitude || !SCALABLE.has(e.kind) || e.value == null) return { ...e };
+        const m = Math.exp(0.35 * gauss(seed, 778, si, ei));
+        return { ...e, value: e.kind === 'crypto' ? Math.max(-0.95, e.value * m) : e.value * m };
+      }) }));
+      const Pth = Object.fromEntries(keys.map(k2 => [k2, []]));
+      let g0 = base.agg.gdp; const bg = [];
+      for (let m = 0; m < months; m++) {
+        base.step(); sim.step();
+        Pth.gdp.push((sim.agg.gdp / base.agg.gdp - 1) * 100);
+        Pth.infl.push(sim.agg.infl - base.agg.infl);
+        Pth.unemp.push(sim.agg.unemp - base.agg.unemp);
+        Pth.wars.push(sim.agg.wars - base.agg.wars);
+        Pth.eq.push((Math.exp(sim.agg.eq - base.agg.eq) - 1) * 100);
+        Pth.btc.push((sim.btc / base.btc - 1) * 100);
+        Pth.trade.push((sim.agg.trade / base.agg.trade - 1) * 100);
+        if ((m + 1) % 12 === 0) { bg.push((base.agg.gdp / g0 - 1) * 100); g0 = base.agg.gdp; }
+      }
+      for (const key of keys) paths[key].push(Pth[key]);
+      for (let i = 0; i < N; i++) { finalC[i].push((sim.S[i].gdp / base.S[i].gdp - 1) * 100); fxC[i].push((Math.exp(sim.S[i].e - base.S[i].e) - 1) * 100); }
+      warStarts.push(sim.agentWars - base.agentWars);   // войны, объявленные агентами, сверх базы (без войн самого сценария)
+      baseGrowth.push(bg);
+      onProgress?.((k + 1) / seeds);
     }
-    for (const key in paths) paths[key].push(P[key]);
-    for (let i = 0; i < N; i++) finalC[i].push((sim.S[i].gdp / base.S[i].gdp - 1) * 100);
-    extraWars.push((ws - wb) / months);
-    warStarts.push(sim.agentWars - base.agentWars);   // войны, объявленные агентами, сверх базы (без войн самого сценария)
-    onProgress?.((k + 1) / seeds);
-  }
+  } finally { Object.assign(P, saved); }
   const band = key => {
     const out = { p10: [], p50: [], p90: [] };
     for (let m = 0; m < months; m++) { const col = paths[key].map(p => p[m]); out.p10.push(q(col, 0.1)); out.p50.push(q(col, 0.5)); out.p90.push(q(col, 0.9)); }
     return out;
   };
   const end = key => { const col = paths[key].map(p => p[months - 1]); return { p10: q(col, 0.1), p50: q(col, 0.5), p90: q(col, 0.9), neg: mean(col.map(v => +(v < 0))) }; };
-  // худшее значение за горизонт (минимум ВВП, максимум инфляции/безработицы) — для шоков, которые потом проходят
   const peak = (key, fn) => { const col = paths[key].map(p => fn(...p)); return { p10: q(col, 0.1), p50: q(col, 0.5), p90: q(col, 0.9) }; };
-  const countries = finalC.map((col, i) => ({ i, p50: q(col, 0.5), p10: q(col, 0.1), p90: q(col, 0.9), neg: mean(col.map(v => +(v < -0.05))), pos: mean(col.map(v => +(v > 0.05))) }));
+  const years = Math.floor(months / 12);
+  const yb = { p10: [], p50: [], p90: [] };
+  for (let y = 0; y < years; y++) { const col = baseGrowth.map(r => r[y]); yb.p10.push(q(col, 0.1)); yb.p50.push(q(col, 0.5)); yb.p90.push(q(col, 0.9)); }
+  const countries = finalC.map((col, i) => ({ i, p50: q(col, 0.5), p10: q(col, 0.1), p90: q(col, 0.9), neg: mean(col.map(v => +(v < -0.05))), pos: mean(col.map(v => +(v > 0.05))),
+    fx: q(fxC[i], 0.5) }));
   return {
-    seeds, months,
-    bands: { gdp: band('gdp'), infl: band('infl'), unemp: band('unemp'), wars: band('wars') },
-    end: { gdp: end('gdp'), infl: end('infl'), unemp: end('unemp') },
-    peak: { gdp: peak('gdp', Math.min), infl: peak('infl', Math.max), unemp: peak('unemp', Math.max) },
-    wars: { extraAvg: mean(extraWars), newWarsMedian: q(warStarts, 0.5), pMore: mean(warStarts.map(v => +(v > 0))) },
+    seeds, months, layers: { params, magnitude },
+    bands: Object.fromEntries(keys.map(k => [k, band(k)])),
+    end: Object.fromEntries(['gdp', 'infl', 'unemp', 'eq', 'btc', 'trade'].map(k => [k, end(k)])),
+    peak: { gdp: peak('gdp', Math.min), infl: peak('infl', Math.max), unemp: peak('unemp', Math.max), eq: peak('eq', Math.min) },
+    wars: { newWarsMedian: q(warStarts, 0.5), pMore: mean(warStarts.map(v => +(v > 0))) },
+    baseline: { years: Array.from({ length: years }, (_, y) => 2026 + y), growth: yb, imf: Array.from({ length: years }, (_, y) => world.worldForecast?.[2026 + y] ?? null) },
     countries,
   };
 }

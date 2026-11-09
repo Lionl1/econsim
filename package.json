@@ -1,0 +1,28 @@
+{
+  "name": "econsim",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "vite",
+    "build": "vite build",
+    "data": "python3 scripts/fetch_data.py",
+    "calibrate": "node scripts/calibrate.mjs",
+    "backtest": "node scripts/backtest.mjs",
+    "history": "python3 scripts/fetch_history.py",
+    "sim": "node scripts/headless.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "d3-geo": "^3.1.2",
+    "three": "^0.187.0",
+    "topojson-client": "^3.1.0"
+  },
+  "devDependencies": {
+    "vite": "^8.3.6"
+  }
+}

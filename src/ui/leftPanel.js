@@ -1,0 +1,142 @@
+// Левая панель: готовые сценарии, конструктор, источники данных.
+import { PRESETS, SHOCK_VARS } from '../sim/scenarios.js';
+import { targetSelectHtml, describeEffect } from './targets.js';
+
+const $ = (s, r = document) => r.querySelector(s);
+
+export function initLeft(app) {
+  const T = app.T;
+  document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => {
+    document.querySelectorAll('#tabs button').forEach(x => x.classList.toggle('on', x === b));
+    document.querySelectorAll('#left .tab').forEach(x => x.classList.toggle('on', x.id === 'tab-' + b.dataset.tab));
+  });
+  initScenarios(app); initBuilder(app); initSources(app);
+}
+
+// ---------- вкладка «Сценарии» ----------
+function initScenarios(app) {
+  const root = $('#tab-scen'), T = app.T;
+  root.innerHTML = `
+    <h3>Активные сценарии</h3><div id="sc-active"></div>
+    <h3>Запуск</h3>
+    <div class="form"><div><label>Старт через (мес.)</label><input id="sc-delay" type="number" min="0" max="120" value="0"></div></div>
+    <div style="height:8px"></div>
+    <div id="sc-presets"></div>`;
+  $('#sc-presets').innerHTML = PRESETS.map(p => `
+    <div class="card"><div class="t">${p.icon} ${p.title}</div><div class="d">${p.desc}</div>
+      <div class="row"><span class="hint">${p.duration ? p.duration + ' мес.' : 'до развязки'}</span><button class="primary small" data-run="${p.id}">▶ Запустить</button></div></div>`).join('');
+  root.querySelectorAll('[data-run]').forEach(b => b.onclick = () => {
+    const p = PRESETS.find(x => x.id === b.dataset.run);
+    app.launch({ ...p }, +$('#sc-delay').value || 0);
+  });
+  app.refreshActive = () => {
+    const box = $('#sc-active'), sim = app.sim;
+    if (!sim.scenarios.length) { box.innerHTML = '<div class="hint">Пока ничего не запущено. Выберите сценарий ниже или соберите свой в «Конструкторе», либо вмешайтесь через карточку страны. Результаты сравниваются с базовым миром без вмешательств (метрики «Δ к базе»).</div>'; return; }
+    box.innerHTML = sim.scenarios.map(sc => {
+      const el = sim.t - sc.start, pr = sc.duration ? Math.min(100, Math.max(0, el / sc.duration * 100)) : (sc.started ? 100 : 0);
+      const st = !sc.started ? `старт через ${sc.start - sim.t} мес.` : sc.ended ? 'завершён' : sc.duration ? `идёт, ${Math.max(0, sc.duration - el)} мес. осталось` : 'бессрочно';
+      return `<div class="card"><div class="row"><div class="t">${sc.title}</div><button class="small danger" data-rm="${sc.id}" title="Отменить и откатить">✕</button></div>
+        <div class="d">${st}</div>${sc.effects.slice(0, 4).map(e => `<div class="hint">• ${describeEffect(T, e)}</div>`).join('')}
+        <div class="bar"><i style="width:${pr}%"></i></div></div>`;
+    }).join('');
+    box.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { sim.removeScenario(+b.dataset.rm); app.refreshActive(); app.toast('Сценарий отменён'); });
+  };
+}
+
+// ---------- вкладка «Конструктор» ----------
+function initBuilder(app) {
+  const T = app.T, root = $('#tab-build');
+  const draft = { title: 'Мой сценарий', duration: 12, start: 0, effects: [] };
+  root.innerHTML = `
+    <h3>Параметры</h3>
+    <div class="form">
+      <div><label>Название</label><input id="b-title" value="${draft.title}"></div>
+      <div class="r2"><div><label>Длительность (мес., 0 = бессрочно/разово)</label><input id="b-dur" type="number" min="0" max="240" value="12"></div>
+      <div><label>Старт через (мес.)</label><input id="b-start" type="number" min="0" max="120" value="0"></div></div>
+    </div>
+    <h3>Добавить эффект</h3>
+    <div class="form">
+      <div><label>Тип эффекта</label><select id="b-kind">
+        <option value="shock">Шок (рост, инфляция, безработица…)</option><option value="oil">Цена нефти</option>
+        <option value="tariff">Пошлины</option><option value="sanction">Санкции</option>
+        <option value="war">Война</option><option value="relation">Отношения стран</option></select></div>
+      <div id="b-fields" class="form"></div>
+      <button id="b-add">＋ Добавить в сценарий</button>
+    </div>
+    <h3>Эффекты сценария</h3><div id="b-list"></div>
+    <div class="form" style="margin-top:10px"><button class="primary" id="b-run">▶ Запустить сценарий</button>
+      <div class="r2"><button id="b-copy">Копировать JSON</button><button id="b-load">Загрузить JSON</button></div>
+      <textarea id="b-json" rows="4" placeholder="JSON сценария (для импорта вставьте и нажмите «Загрузить JSON»)" style="display:none"></textarea></div>`;
+
+  const sel = (id, o) => targetSelectHtml(T, id, o);
+  const FIELDS = {
+    shock: () => `<div><label>Кого затрагивает</label>${sel('f-targets')}</div>
+      <div><label>Показатель</label><select id="f-var">${Object.entries(SHOCK_VARS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select></div>
+      <div class="r2"><div><label>Величина (±)</label><input id="f-value" type="number" step="0.1" value="-3"></div>
+      <div><label>Усиление по признаку</label><select id="f-scale"><option value="none">равномерно</option><option value="urban">урбанизация</option><option value="openness">открытость торговли</option><option value="internet">цифровизация</option></select></div></div>`,
+    oil: () => `<div><label>Изменение цены нефти (1 = +100%, −0.4 = −40%)</label><input id="f-value" type="number" step="0.1" value="1"></div>`,
+    tariff: () => `<div><label>Кто вводит</label>${sel('f-from', { selected: 'iso:USA' })}</div><div><label>Против кого</label>${sel('f-to', { selected: 'iso:CHN' })}</div><div><label>Пошлина, %</label><input id="f-value" type="number" value="40"></div>`,
+    sanction: () => `<div><label>Кто вводит</label>${sel('f-from', { selected: 'bloc:NATO' })}</div><div><label>Против кого</label>${sel('f-to', { selected: 'iso:RUS' })}</div>`,
+    war: () => `<div><label>Сторона A (агрессор)</label>${sel('f-a', { selected: 'iso:RUS' })}</div><div><label>Сторона B</label>${sel('f-b', { selected: 'iso:UKR' })}</div>`,
+    relation: () => `<div><label>Страны/группа A</label>${sel('f-a', { selected: 'bloc:NATO' })}</div><div><label>Страны/группа B</label>${sel('f-b', { selected: 'bloc:BRICS' })}</div><div><label>Изменение отношений (−1…+1)</label><input id="f-value" type="number" step="0.1" value="-0.3"></div>`,
+  };
+  const renderFields = () => { $('#b-fields').innerHTML = FIELDS[$('#b-kind').value](); };
+  $('#b-kind').onchange = renderFields; renderFields();
+
+  const v = id => $('#' + id)?.value;
+  const renderList = () => {
+    $('#b-list').innerHTML = draft.effects.length ? draft.effects.map((e, i) => `<div class="eff"><span>${describeEffect(T, e)}</span><button class="small danger" data-del="${i}">✕</button></div>`).join('') : '<div class="hint">Пока пусто. Добавьте хотя бы один эффект.</div>';
+    root.querySelectorAll('[data-del]').forEach(b => b.onclick = () => { draft.effects.splice(+b.dataset.del, 1); renderList(); });
+  };
+  renderList();
+
+  $('#b-add').onclick = () => {
+    const k = v('b-kind'), n = x => parseFloat(v(x));
+    const e = { kind: k };
+    if (k === 'shock') Object.assign(e, { targets: [v('f-targets')], var: v('f-var'), value: n('f-value'), scale: v('f-scale') });
+    if (k === 'oil') e.value = n('f-value');
+    if (k === 'tariff') Object.assign(e, { from: [v('f-from')], to: [v('f-to')], value: n('f-value') });
+    if (k === 'sanction') Object.assign(e, { from: [v('f-from')], to: [v('f-to')] });
+    if (k === 'war') Object.assign(e, { a: [v('f-a')], b: [v('f-b')] });
+    if (k === 'relation') Object.assign(e, { a: [v('f-a')], b: [v('f-b')], value: n('f-value') });
+    if (e.value !== undefined && Number.isNaN(e.value)) return app.toast('Введите число');
+    draft.effects.push(e); renderList();
+  };
+  $('#b-run').onclick = () => {
+    if (!draft.effects.length) return app.toast('Добавьте эффекты');
+    app.launch({ title: v('b-title') || 'Мой сценарий', duration: Math.max(0, +v('b-dur') || 0), effects: draft.effects.map(e => ({ ...e })) }, +v('b-start') || 0);
+  };
+  $('#b-copy').onclick = () => {
+    const json = JSON.stringify({ title: v('b-title'), duration: +v('b-dur'), effects: draft.effects }, null, 1);
+    $('#b-json').style.display = 'block'; $('#b-json').value = json;
+    navigator.clipboard?.writeText(json).then(() => app.toast('JSON скопирован')).catch(() => {});
+  };
+  $('#b-load').onclick = () => {
+    const ta = $('#b-json');
+    if (ta.style.display === 'none') { ta.style.display = 'block'; return app.toast('Вставьте JSON и нажмите ещё раз'); }
+    try {
+      const d = JSON.parse(ta.value);
+      if (!Array.isArray(d.effects)) throw new Error('нет effects');
+      draft.effects = d.effects; $('#b-title').value = d.title || 'Мой сценарий'; $('#b-dur').value = d.duration ?? 12; renderList(); app.toast('Загружено');
+    } catch (err) { app.toast('Ошибка JSON: ' + err.message); }
+  };
+}
+
+// ---------- вкладка «Данные» ----------
+function initSources(app) {
+  const root = $('#tab-src');
+  const n = app.world.N, imp = app.world.countries.filter(c => c.imputed.length > 6).length;
+  root.innerHTML = `
+    <h3>Что внутри</h3>
+    <p class="hint">${n} стран (194 независимых + Тайвань и Палестина). Для каждой: ВВП, население, рост, инфляция, безработица, госдолг, торговля, военные расходы, неравенство, индикаторы управления (World Bank). Пропуски заполнены региональной медианой${imp ? ` (у ${imp} микрогосударств заполнено много полей)` : ''}. Обновить данные: <code>npm run data</code>.</p>
+    <h3>Как устроена модель</h3>
+    <p class="hint"><b>Страна</b> — монетарная и фискальная политика (правило Тейлора, стимулы, долг), торговля по гравитационной модели, тарифы, санкции, войны и союзы, цена нефти.<br>
+    <b>Агенты-правительства</b> (характер: ястребиность, кооперативность, протекционизм) отвечают на пошлины, вводят санкции, наращивают армию, помогают союзникам и объявляют войны.<br>
+    <b>Агенты-граждане</b> (десятки на страну) теряют работу, реагируют на инфляцию и войну, выходят на протесты, эмигрируют; настроение определяет смену власти на выборах и риск переворота.<br>
+    Базовый мир идёт параллельно с теми же случайными числами — разница показывает чистый эффект вашего сценария.</p>
+    <p class="hint">⚠ Это учебная модель, а не прогноз. Волатильность роста и инфляции, их инерция и корреляция с мировым циклом откалиброваны по рядам World Bank 2000–2024 (<code>npm run calibrate</code>); пандемия и финкризис сверены с реальными просадками (<code>npm run backtest</code>). Конкретные страны и структурные связи (торговля, войны) не калибровались.</p>
+    <h3>Источники данных</h3><div id="src-list"></div>`;
+  fetch('/data/sources.json').then(r => r.json()).then(list => {
+    $('#src-list').innerHTML = list.map(s => `<div class="card"><div class="t">${s.used ? '✅' : '⬜'} <a href="${s.url}" target="_blank" rel="noopener">${s.name}</a></div><div class="d">${s.what}</div></div>`).join('');
+  });
+}

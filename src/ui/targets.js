@@ -1,6 +1,7 @@
 // Справочник целей для сценариев (селекторы) и описания эффектов.
 import { BLOC_NAMES } from '../sim/blocs.js';
 import { SHOCK_VARS } from '../sim/scenarios.js';
+import { SECTORS as SECTOR_NAMES } from '../sim/equity.js';
 
 const REGIONS = { Europe: 'Европа', Asia: 'Азия', Africa: 'Африка', Americas: 'Америка', Oceania: 'Океания' };
 
@@ -33,6 +34,10 @@ export function describeEffect(T, e) {
     case 'tariff': return `Пошлины ${e.value}%: ${T.label(e.from)} → ${T.label(e.to)}`;
     case 'sanction': return `Санкции: ${T.label(e.from)} → ${T.label(e.to)}`;
     case 'war': return `Война: ${T.label(e.a)} ⟷ ${T.label(e.b)}`;
+    case 'crypto': return `Биткоин ${e.value > 0 ? '+' : ''}${Math.round(e.value * 100)}% (разово)`;
+    case 'sector': return `Отрасль «${SECTOR_NAMES[e.sector] || esc(e.sector)}» ${e.value > 0 ? '+' : ''}${e.value}% (разово)`;
+    case 'company': return `Акции ${esc(e.name)} ${e.value > 0 ? '+' : ''}${e.value}% (разово)`;
+    case 'relocate': return `${esc(e.name)} переносит производство → ${T.label(['iso:' + e.to])}`;
     case 'peace': return `Мирное соглашение: ${T.label(e.a)} (конец войн, снятие санкций и пошлин, запрет новых войн)`;
     case 'relation': return `Отношения ${e.value > 0 ? '+' : ''}${e.value}: ${T.label(e.a)} ↔ ${T.label(e.b)}`;
   }

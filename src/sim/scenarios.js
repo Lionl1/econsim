@@ -7,11 +7,33 @@
 //   sanction {from, to}
 //   war      {a, b}
 //   relation {a, b, value}
+//   crypto   {value}   — разовый скачок цены биткоина (−0.7 = обвал на 70%)
+//   sector   {sector, value} — разовый скачок отрасли на фондовом рынке, % (semis, tech, energy, finance, …)
 //   peace    {a}       — мир внутри группы: конец войн между участниками, снятие взаимных санкций/пошлин, запрет новых войн на срок
 const GULF = ['iso:IRN', 'iso:SAU', 'iso:ARE', 'iso:KWT', 'iso:QAT', 'iso:BHR', 'iso:OMN', 'iso:IRQ'];
 const FRAGILE = ['region:Africa', 'subregion:Southern Asia'];
 
+const EM_FRAGILE = ['iso:TUR', 'iso:ARG', 'iso:EGY', 'iso:PAK', 'iso:NGA', 'iso:ZAF', 'iso:BRA', 'iso:COL', 'iso:IDN', 'iso:KEN'];
+
 export const PRESETS = [
+  { id: 'crypto-crash', icon: '₿', title: 'Крах крипторынка', duration: 12,
+    desc: 'Биткоин −75%, банкротство бирж. Сильнее бьёт по странам, где крипта распространена (инфляция, слабые валюты).',
+    effects: [{ kind: 'crypto', value: -0.75 }, { kind: 'sector', sector: 'finance', value: -5 }, { kind: 'sector', sector: 'tech', value: -8 }] },
+  { id: 'strong-dollar', icon: '💵', title: 'Сверхсильный доллар', duration: 24,
+    desc: 'ФРС резко поднимает ставку, капитал бежит в доллар: валюты развивающихся стран −20…−35%, рынки падают.',
+    effects: [{ kind: 'shock', targets: ['income:UMC', 'income:LMC', 'income:LIC'], var: 'fx', value: 20 }, { kind: 'shock', targets: EM_FRAGILE, var: 'fx', value: 15 },
+      { kind: 'shock', targets: ['iso:USA'], var: 'growth', value: -0.8 }, { kind: 'shock', targets: ['all'], var: 'equity', value: -12 }] },
+  { id: 'ai-bubble', icon: '🫧', title: 'Пузырь ИИ лопается', duration: 18,
+    desc: 'Капитализация полупроводников и IT падает вдвое, фондовые рынки США и Тайваня проседают, инвестиции сворачиваются.',
+    effects: [{ kind: 'sector', sector: 'semis', value: -55 }, { kind: 'sector', sector: 'tech', value: -40 }, { kind: 'shock', targets: ['iso:USA', 'iso:TWN', 'iso:KOR', 'iso:NLD'], var: 'equity', value: -25 },
+      { kind: 'shock', targets: ['iso:USA'], var: 'growth', value: -1.5 }, { kind: 'shock', targets: ['iso:TWN', 'iso:KOR'], var: 'growth', value: -2 }] },
+  { id: 'em-currency-crisis', icon: '💱', title: 'Валютный кризис в EM', duration: 18,
+    desc: 'Отток капитала из уязвимых развивающихся стран: девальвация 40%, скачок инфляции, обвал рынков.',
+    effects: [{ kind: 'shock', targets: EM_FRAGILE, var: 'fx', value: 40 }, { kind: 'shock', targets: EM_FRAGILE, var: 'equity', value: -30 },
+      { kind: 'shock', targets: EM_FRAGILE, var: 'growth', value: -3 }, { kind: 'shock', targets: EM_FRAGILE, var: 'stab', value: -0.05 }] },
+  { id: 'stock-crash', icon: '📉', title: 'Обвал фондовых рынков', duration: 12,
+    desc: 'Мировые рынки −35% за месяц (как в 2008/2020): эффект богатства бьёт по потреблению, сильнее — где рынок велик к ВВП.',
+    effects: [{ kind: 'shock', targets: ['all'], var: 'equity', value: -35 }, { kind: 'crypto', value: -0.5 }] },
   { id: 'oil-shock', icon: '🛢', title: 'Нефтяной шок +100%', duration: 12,
     desc: 'ОПЕК+ резко сокращает добычу, цена нефти вдвое. Импортёры энергии страдают, экспортёры выигрывают.',
     effects: [{ kind: 'oil', value: 1.0 }] },
@@ -61,4 +83,5 @@ export const SHOCK_VARS = {
   growth: 'Рост ВВП (п.п./год)', infl: 'Инфляция (п.п.)', unemp: 'Безработица (п.п.)', stab: 'Стабильность (±0..1)',
   sent: 'Настроения населения (±0..1)', mil: 'Военные расходы (% ВВП)', fiscal: 'Фискальный стимул (% ВВП)',
   level: 'Разовое изменение ВВП (%)', pop: 'Население (%)', debt: 'Госдолг (п.п. ВВП)',
+  fx: 'Девальвация к $ (%)', equity: 'Фондовый рынок, разово (%)', cryptoBan: 'Запрет крипты (1 = да)',
 };

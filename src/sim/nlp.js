@@ -24,6 +24,11 @@ const ALIASES = [
 const STRIP = /(ая|ое|ые|ий|ый|ой|ия|ея|я|а|ь|й|о|и|ы|е)$/;
 const ENDINGS = new Set(['', 'а', 'ы', 'е', 'у', 'и', 'ю', 'я', 'й', 'ой', 'ою', 'ей', 'ем', 'ом', 'ии', 'ию', 'ия', 'ией', 'ая', 'ую', 'ые', 'ых', 'ым', 'ыми', 'ого', 'ому', 'ий', 'ый', 'ое', 'ие', 'их', 'им', 'ами', 'ах', 'ам', 'ея', 'еи', 'ее', 'ею', 'еей']);
 const wordMatch = (tok, p) => tok === p.word || (p.base.length >= 3 && tok.startsWith(p.base) && ENDINGS.has(tok.slice(p.base.length)));
+// русские написания компаний (латиница тоже распознаётся)
+const COMPANY_RU = { 'Apple': 'эппл', 'Nvidia': 'нвиди', 'Microsoft': 'майкрософт', 'Alphabet': 'гугл', 'Amazon': 'амазон', 'Tesla': 'тесл',
+  'Meta Platforms': 'мета', 'Samsung Electronics': 'самсунг', 'Toyota': 'тойот', 'Sberbank': 'сбер', 'Gazprom': 'газпром', 'Saudi Aramco': 'арамко',
+  'Alibaba Group': 'алибаб', 'Tencent': 'тенсент', 'Boeing': 'боинг', 'Airbus': 'эрбас', 'Volkswagen': 'фольксваген', 'BYD': 'byd', 'TSMC': 'tsmc' };
+
 // алиасы из нескольких слов (префиксы подряд идущих слов)
 const PHRASES = [
   [['все', 'стран'], ['all']], [['всех', 'стран'], ['all']], [['весь', 'мир'], ['all']], [['всего', 'мир'], ['all']],
@@ -42,7 +47,7 @@ function countryIndex(world) {
 const STOP = new Set(['того']);
 // (?<![а-я]) — начало слова: \b в JS не работает с кириллицей
 
-const KW = /(?<![а-я])(война|вторжен|вторга|напад|атак|удар|воюет|обстрел|захват|санкци|эмбарго|изоляц|пошлин|тариф|торгов[а-я]* войн|нефт|землетряс|цунами|ураган|наводнен|стихийн|извержен|засух|неурожай|голод|пандеми|эпидеми|вирус|карантин|кризис|рецесси|крах|банкротств|пузыр|дефолт|переворот|революци|мятеж|восстани|беспорядк|протест|теракт|кибератак|взлом|забастовк|инфляц|безработиц|военн[а-я]* (расход|бюджет)|вооруж|милитариз|бум(?![а-я])|подъем|прорыв|технологическ|стимул|реформ|помощ|грант|союз|сближен|объедин|сотруднич|разоруж|примирен|перемири|дружб|договор|альянс|ссор|конфликт|напряжен|разрыв|эскалац)/;
+const KW = /(?<![а-я])(война|вторжен|вторга|напад|атак|удар|воюет|обстрел|захват|санкци|эмбарго|изоляц|пошлин|тариф|торгов[а-я]* войн|нефт|землетряс|цунами|ураган|наводнен|стихийн|извержен|засух|неурожай|голод|пандеми|эпидеми|вирус|карантин|кризис|рецесси|крах|банкротств|пузыр|дефолт|переворот|революци|мятеж|восстани|беспорядк|протест|теракт|кибератак|взлом|забастовк|инфляц|безработиц|военн[а-я]* (расход|бюджет)|вооруж|милитариз|бум(?![а-я])|подъем|прорыв|технологическ|стимул|реформ|помощ|грант|союз|сближен|объедин|девальв|биткоин|крипт|акци|бирж|доллар|рубл|юан|перенос|сотруднич|разоруж|примирен|перемири|дружб|договор|альянс|ссор|конфликт|напряжен|разрыв|эскалац)/;
 
 export function parseEvent(textRaw, world, lab = null) {
   // несколько событий в одной фразе: делим по запятым/«и»/«;», склеивая куски без ключевых слов с предыдущим
@@ -141,6 +146,60 @@ function parseOne(textRaw, world, lab = null) {
     if (has(/торговая война|торговой войн|торговую войну|ответ|взаимн/) && B2 && A2) effects.push({ kind: 'tariff', from: B2.sel, to: A2.sel, value: Math.round(val) });
     dur = dur || 36; title = 'Пошлины';
   });
+  // ---- рынки: валюты, крипта, акции, отрасли, компании ----
+  const UP = /(?<![а-я])(вырос|выраст|растет|растёт|рост|взлет|взлёт|подорож|укрепл|укреп|ралли|в (два|три|пять|десять|\d+) раз)/;
+  const DOWN = /(?<![а-я])(упал|упад|пада|рух|обвал|крах|обесцен|девальв|подешев|дешеве|ослаб|сниж|снизи|лопн|паден)/;
+  const dirMkt = has(DOWN) ? -1 : has(UP) ? 1 : -1;
+  const times = (() => { const m = evText.match(/в (два|три|пять|десять|\d+) раз/); if (!m) return null; return ({ 'два': 2, 'три': 3, 'пять': 5, 'десять': 10 })[m[1]] ?? +m[1]; })();
+  let market = false;
+  const CURRENCIES = [['рубл', 'iso:RUS'], ['юан', 'iso:CHN'], ['лир', 'iso:TUR'], ['иен', 'iso:JPN'], ['йен', 'iso:JPN'], ['рупи', 'iso:IND'], ['реал', 'iso:BRA'],
+    ['песо', 'iso:ARG'], ['фунт', 'iso:GBR'], ['гривн', 'iso:UKR'], ['тенге', 'iso:KAZ'], ['рэнд', 'iso:ZAF'], ['найр', 'iso:NGA'], ['риал', 'iso:IRN'],
+    ['шекел', 'iso:ISR'], ['злот', 'iso:POL'], ['франк', 'iso:CHE'], ['евро', 'bloc:EU'], ['вон', 'iso:KOR'], ['лари', 'iso:GEO'], ['драм', 'iso:ARM'], ['сом', 'iso:KGZ']];
+  const curTok = toks.find(tk => CURRENCIES.some(([p]) => tk.w.startsWith(p) && !(p === 'вон' && tk.w !== 'вона' && tk.w !== 'воны')));
+  if (has(/(?<![а-я])доллар/) && !curTok && !has(/(?<![а-я])(биткоин|крипт)/)) R('курс доллара', () => {
+    // доллар крепнет = валюты остального мира слабеют
+    const v = (pct ?? 15) * strong * (has(UP) && !has(/(?<![а-я])(ослаб|паден|упал|обвал)/) ? 1 : -1);
+    effects.push(sh(sorted.length ? [...new Set(sorted.flatMap(e => e.sel))] : ['all'], 'fx', v)); market = true; dur = dur || 24; title ??= v > 0 ? 'Сильный доллар' : 'Слабый доллар';
+  });
+  if (curTok || has(/(?<![а-я])(девальвац|валютн[а-я]* кризис|обвал[а-я]* курс|курс[а-я]* (обвал|рух|пад))/)) R('валюта', () => {
+    const tgt = sorted.length ? [...new Set(sorted.flatMap(e => e.sel))] : curTok ? [CURRENCIES.find(([p]) => curTok.w.startsWith(p))[1]] : ['all'];
+    const v = (pct ?? 25) * strong * (has(/(?<![а-я])(укреп|подорож|вырос)/) && !has(/(?<![а-я])(девальв|обвал|упал|ослаб)/) ? -1 : 1);
+    effects.push(sh(tgt, 'fx', v)); market = true;
+    if (has(/кризис|обвал|рух/)) effects.push(sh(tgt, 'equity', -20 * strong), sh(tgt, 'growth', -2 * strong));
+    dur = dur || 18; title ??= v > 0 ? 'Девальвация' : 'Укрепление валюты';
+  });
+  if (has(/(?<![а-я])(биткоин|bitcoin|btc|крипт|эфириум|ethereum|стейблкоин)/)) R('крипта', () => {
+    market = true;
+    if (has(/(?<![а-я])(запрет|запрещ)/)) { effects.push(sh(sorted.length ? sorted[0].sel : ['all'], 'cryptoBan', 1)); dur = dur || 0; title ??= 'Запрет крипты'; return; }
+    const v = times ? times - 1 : dirMkt < 0 ? -Math.min(0.95, (pct ?? 60 * strong) / 100) : (pct ?? 80 * strong) / 100;
+    effects.push({ kind: 'crypto', value: +v.toFixed(2) }); dur = dur || 12; title ??= `Биткоин ${v > 0 ? '+' : '−'}${Math.round(Math.abs(v) * 100)}%`;
+  });
+  const coHit = (world.companies || []).find(co => {
+    const n = norm(co.name).split(/\s+/)[0], ru = COMPANY_RU[co.name];
+    return toks.some(tk => tk.w.startsWith(n.slice(0, Math.max(4, n.length - 1))) || (ru && tk.w.startsWith(ru)));
+  });
+  if (coHit) R('компания', () => {
+    market = true;
+    if (has(/(?<![а-я])(перенос|перенес|переезж|перевод|релокац|уход[а-я]* из|выводит производ)/)) {
+      const dest = [...sorted].reverse().find(e => e.sel[0]?.startsWith('iso:'));
+      if (dest) { effects.push({ kind: 'relocate', name: coHit.name, to: dest.sel[0].slice(4) }); dur = dur || 1; title ??= `${coHit.name}: перенос производства`; return; }
+    }
+    const v = times ? (times - 1) * 100 : dirMkt * (pct ?? 30 * strong);
+    effects.push({ kind: 'company', name: coHit.name, value: Math.round(v) }); dur = dur || 1; title ??= `Акции ${coHit.name} ${v > 0 ? '+' : ''}${Math.round(v)}%`;
+  });
+  const SECT = [['полупроводник', 'semis'], ['чип', 'semis'], ['микросхем', 'semis'], ['нефтегаз', 'energy'], ['банк', 'finance'], ['фарм', 'pharma'], ['автопром', 'auto'], ['автомоб', 'auto'],
+    ['оборон', 'defense'], ['телеком', 'telecom'], ['технологическ', 'tech'], ['it', 'tech'], ['айти', 'tech'], ['ии', 'tech'], ['искусственн', 'tech']];
+  const isStock = has(/(?<![а-я])(акци|бирж|фондов|индекс|котиров|рынок акций|рынки|капитализац|пузыр|nasdaq|s&p)/);
+  const sect = isStock && !coHit ? SECT.find(([p]) => toks.some(tk => p.length <= 2 ? tk.w === p : tk.w.startsWith(p))) : null;
+  if (sect) R('отрасль', () => {
+    const v = dirMkt * (pct ?? (has(/пузыр/) ? 50 : 30) * strong);
+    effects.push({ kind: 'sector', sector: sect[1], value: Math.round(v) }); market = true; dur = dur || 12; title ??= `Отрасль: ${sect[1]} ${v > 0 ? '+' : ''}${Math.round(v)}%`;
+  });
+  else if (isStock && !coHit) R('фондовый рынок', () => {
+    const v = dirMkt * (pct ?? 30 * strong);
+    effects.push(sh(sorted.length ? [...new Set(sorted.flatMap(e => e.sel))] : ['all'], 'equity', Math.round(v))); market = true; dur = dur || 12; title ??= v < 0 ? 'Обвал рынка акций' : 'Рост рынка акций';
+  });
+
   const T1 = targetOf(one);
   const shockEvent = (re, name, ttl, eff, d) => { if (has(re)) R(name, () => { eff(); dur = dur || d; title ??= ttl; }); };
   const dir = has(/(?<![а-я])(сниз|сниж|пад|упад|уменьш|замедл|сократ|спад)/) ? -1 : 1;
@@ -152,7 +211,7 @@ function parseOne(textRaw, world, lab = null) {
   shockEvent(/пандеми|эпидеми|вирус|карантин|локдаун/, 'пандемия', 'Пандемия', () => {
     effects.push(sh(T1, 'growth', -gro(6), { scale: 'urban' }), sh(T1, 'unemp', 3 * strong, { scale: 'urban' }), sh(T1, 'sent', -0.12), sh(T1, 'fiscal', 4), sh(T1, 'level', -1.5, { scale: 'openness' }));
   }, 9);
-  shockEvent(/кризис|рецесси|крах|банкротств|схлопыван|лопнул|пузыр/, 'кризис', 'Кризис', () => {
+  if (!market || has(/экономическ|банковск|финансов[а-я]* кризис|долгов|рецесс/)) shockEvent(/кризис|рецесси|крах|банкротств|схлопыван|лопнул|пузыр/, 'кризис', 'Кризис', () => {
     effects.push(sh(T1, 'growth', -gro(5)), sh(T1, 'unemp', 3 * strong), sh(T1, 'level', -2 * strong), sh(T1, 'stab', -0.05));
     if (has(/долг|финанс|банк/)) effects.push(sh(T1, 'debt', 15));
   }, 18);

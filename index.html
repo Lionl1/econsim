@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>EconSim — симулятор стран мира</title>
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <div id="globe"></div>
+
+  <header id="topbar">
+    <div class="brand">🌍 EconSim</div>
+    <div class="clock"><span id="date">—</span></div>
+    <div class="controls">
+      <button id="btn-play" class="primary" title="Пуск / пауза (пробел)">▶ Пуск</button>
+      <button id="btn-step" title="Один месяц">+1 мес</button>
+      <select id="speed" title="Скорость">
+        <option value="0.5">0.5 мес/с</option><option value="1" selected>1 мес/с</option><option value="2">2 мес/с</option>
+        <option value="4">4 мес/с</option><option value="10">10 мес/с</option><option value="24">24 мес/с</option>
+      </select>
+      <button id="btn-reset" title="Начать заново">⟲ Сброс</button>
+    </div>
+    <div class="metric">
+      <label>Показать на глобусе</label>
+      <select id="metric"></select>
+    </div>
+    <div class="spacer"></div>
+    <div class="agg" id="agg"></div>
+  </header>
+
+  <aside id="left" class="panel">
+    <nav class="tabs" id="tabs">
+      <button data-tab="scen" class="on">Сценарии</button>
+      <button data-tab="build">Конструктор</button>
+      <button data-tab="src">Данные</button>
+    </nav>
+    <section id="tab-scen" class="tab on"></section>
+    <section id="tab-build" class="tab"></section>
+    <section id="tab-src" class="tab"></section>
+  </aside>
+
+  <aside id="right" class="panel"></aside>
+
+  <div id="legend"><div class="lg-title" id="lg-title"></div><div class="lg-bar" id="lg-bar"></div><div class="lg-lbl"><span id="lg-min"></span><span id="lg-max"></span></div></div>
+
+  <section id="feed" class="panel">
+    <div class="feed-head"><b>Лента событий</b>
+      <label><input type="checkbox" id="feed-minor" /> мелкие</label></div>
+    <div id="feed-list"></div>
+  </section>
+
+  <div id="tooltip"></div>
+  <div id="toast"></div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

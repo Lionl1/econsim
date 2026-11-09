@@ -44,7 +44,7 @@ export function stepFx(sim) {
     for (const i of ez.members) { const s = S[i]; w += s.gdp; rr += s.gdp * (s.r - s.infl - s.rr0); infl += s.gdp * s.infl; risk += s.gdp * Math.max(0, s.stab0 - s.stab); sh += s.gdp * s.mods.fx; }
     ez.P += infl / w / 1200;
     const qs = -P.fxRate * (rr / w - (us.r - us.infl - us.rr0)) / 100 + P.fxRisk * risk / w + sh / w / 100;
-    ez.q += P.fxAdj * (qs - ez.q) + P.fxNoise * 0.063 / Math.sqrt(12) * gauss(sim.seed, 9997, t, 3);
+    ez.q += P.fxAdj * (qs - ez.q) + sim.noise * P.fxNoise * 0.063 / Math.sqrt(12) * gauss(sim.seed, 9997, t, 3);
     ez.e = ez.q + ez.P - us.Plog;
   }
   for (const s of S) {
@@ -65,7 +65,7 @@ export function stepFx(sim) {
       const sigma = Math.max(0.03, cur.fxVol || 0.1) * 0.8 * P.fxNoise / Math.sqrt(12);
       const qBase = s.q - s.qShock;
       const qs = qStar(sim, s, c) - s.mods.fx / 100;
-      const nb = qBase + P.fxAdj * (qs - qBase) + sigma * gauss(sim.seed, s.i, t, 121);
+      const nb = qBase + P.fxAdj * (qs - qBase) + sim.noise * sigma * gauss(sim.seed, s.i, t, 121);
       s.qShock += 0.5 * (s.mods.fx / 100 - s.qShock);      // scenario depreciation passes through quickly
       s.q = clamp(nb + s.qShock, -1.5, 4);
       s.e = s.q + (s.Plog - us.Plog);

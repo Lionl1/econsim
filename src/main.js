@@ -28,12 +28,12 @@ async function boot() {
     getJson('/data/countries.json'), getJson('/data/world-50m.json'), getJson('/data/trade.json'), getJson('/data/markets.json'), getJson('/data/history.json'),
   ]);
   let world = buildWorld(raw, { trade, markets });
-  const app = window.app = { world, raw, trade, markets, history, cal: null, swapped: false, T: buildTargets(world), metric: 'g', running: false, speed: 1, selected: -1, seed: 1 + Math.floor(Math.random() * 1e6), feedMinor: false };
+  const app = window.app = { world, raw, trade, markets, history, cal: null, swapped: false, noise: 1, T: buildTargets(world), metric: 'g', running: false, speed: 1, selected: -1, seed: 1 + Math.floor(Math.random() * 1e6), feedMinor: false };
 
   // calendar mode: "as it was" gets every event after the start year, the comparison world lacks the removed ones
   app.newSims = () => {
-    app.sim = new Sim(world, { seed: app.seed });
-    app.base = new Sim(world, { seed: app.seed });
+    app.sim = new Sim(world, { seed: app.seed, noise: app.noise });
+    app.base = new Sim(world, { seed: app.seed, noise: app.noise });
     app.swapped = false;
     if (app.cal) for (const ev of CALENDAR) {
       const start = monthOf(ev, app.cal.startYear);
@@ -139,6 +139,14 @@ async function boot() {
   addEventListener('keydown', e => { if (e.code === 'Space' && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) { e.preventDefault(); setRunning(!app.running); } });
   $('#feed-minor').onchange = e => { app.feedMinor = e.target.checked; app.lastFeedId = -1; refreshFeed(); };
   $('#feed-toggle').onclick = () => $('#dock').classList.toggle('feed-open');
+  // random shocks on/off for the worlds on the globe (the Evaluate windows always keep them)
+  const noiseBtn = $('#btn-noise');
+  const paintNoise = () => { noiseBtn.classList.toggle('on', app.noise > 0); noiseBtn.textContent = app.noise > 0 ? '🎲 Случайность: вкл' : '🎲 Случайность: выкл'; };
+  noiseBtn.onclick = () => {
+    app.noise = app.noise > 0 ? 0 : 1; app.sim.noise = app.base.noise = app.noise; paintNoise();
+    app.toast(app.noise ? 'Случайные шоки включены: мир как в реальности, с колебаниями' : 'Случайные шоки выключены: глобус показывает ожидаемую траекторию, решения агентов остаются');
+  };
+  paintNoise();
   // calendar mode: clicking a year or an event icon on the timeline travels there
   $('#timeline').onclick = e => {
     if (!app.cal) return;

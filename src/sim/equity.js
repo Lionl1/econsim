@@ -35,14 +35,14 @@ export function stepEquity(sim) {
   const W = sim.world, N = W.N, S = sim.S, t = sim.t;
   // common risk factor (about 15% a year for the world market) with rare tail months
   const tail = gauss(sim.seed, 9995, t, 2) > 2.5 ? -0.06 : 0;
-  sim.riskShock = 0.037 * gauss(sim.seed, 9995, t, 1) + tail;
+  sim.riskShock = sim.noise * (0.037 * gauss(sim.seed, 9995, t, 1) + tail);
   // sectors
   const dOil = Math.log(sim.oil / (sim.oilPrev || sim.oil)); sim.oilPrev = sim.oil;
   const warShare = S.reduce((a, s) => a + (s.warCount ? s.gdp : 0), 0) / S.reduce((a, s) => a + s.gdp, 0);
   const twn = W.idx.get('TWN');
   sim.chipShock = twn != null && S[twn].warCount ? 1 : 0;                 // a war around Taiwan hits chips
   for (const k in sim.sector) {
-    let d = 0.03 * gauss(sim.seed, 9994, t, k.length * 7 + k.charCodeAt(0));
+    let d = sim.noise * 0.03 * gauss(sim.seed, 9994, t, k.length * 7 + k.charCodeAt(0));
     if (k === 'energy') d += 0.8 * dOil;
     if (k === 'defense') d += 0.02 * warShare;
     if (k === 'semis' && sim.chipShock) d -= 0.1;       // while the war lasts: -10%/month on the sector factor (settles around -1...-2 log)
@@ -63,7 +63,7 @@ export function stepEquity(sim) {
     const fund = (s.gc + clamp(s.infl, -2, 40)) / 1200 + P.eqPremium - 0.002 + 2.5 * s.dLevel / 100;
     s.eqF += fund;
     // valuations revert to fundamentals (Shiller: deviations fade over several years)
-    const r = fund - P.eqDuration * dRR / 100 + beta * sim.riskShock + P.eqNoise * idio * gauss(sim.seed, s.i, t, 130)
+    const r = fund - P.eqDuration * dRR / 100 + beta * sim.riskShock + sim.noise * P.eqNoise * idio * gauss(sim.seed, s.i, t, 130)
       + Math.log(1 + s.eqJump) - P.eqRevert * (s.eq - s.eqF);
     s.eqJump = 0;
     s.eq = clamp(s.eq + clamp(r, -0.6, 0.6), -4, 6);

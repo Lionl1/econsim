@@ -24,7 +24,7 @@ export function stepCrypto(sim) {
   const t = sim.t, us = sim.S[sim.usa];
   // Student t with 4 degrees of freedom: g / sqrt(chi2_4 / 4)
   let chi = 0; for (let k = 0; k < 4; k++) chi += gauss(sim.seed, 9996, t, 10 + k) ** 2;
-  const tnoise = gauss(sim.seed, 9996, t, 1) / Math.sqrt(chi / 4) * Math.sqrt(0.5);
+  const tnoise = sim.noise * gauss(sim.seed, 9996, t, 1) / Math.sqrt(chi / 4) * Math.sqrt(0.5);
   const sigma = P.btcVol / Math.sqrt(12);
   const r = 0.01 + P.btcBeta * sim.riskShock * 0.5 + sigma * tnoise - 0.02 * (us.r - (sim.usR || us.r));
   sim.usR = us.r;

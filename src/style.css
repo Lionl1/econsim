@@ -228,6 +228,8 @@ body:not(.left-collapsed) #mapkey { left: 448px; }
 .speed button { border: 0; background: transparent; padding: 4px 8px; font-size: 12px; color: var(--mute); border-radius: 8px; min-width: 28px; }
 .speed button.on { background: var(--raise-2); color: var(--text); }
 .speed .unit { font-size: 10px; color: var(--dim); padding: 0 6px 0 4px; }
+.noise { white-space: nowrap; }
+.noise:not(.on) { border-color: rgba(255,181,71,.6); color: #ffe0b0; background: rgba(255,181,71,.12); }
 .date { font-size: 18px; font-weight: 700; min-width: 92px; letter-spacing: -.2px; }
 .timeline { position: relative; flex: 1; height: 34px; min-width: 120px; }
 .timeline::before { content: ""; position: absolute; left: 0; right: 0; top: 15px; height: 6px; border-radius: 3px; background: rgba(255,255,255,.07); }

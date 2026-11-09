@@ -15,6 +15,7 @@ export function initCrypto(sim) {
     const c = W.countries[s.i];
     const em = c.income === 'LMC' || c.income === 'UMC' ? 0.03 : c.income === 'HIC' ? 0.02 : 0.01;
     s.crypto0 = clamp((c.internet / 100) * (em + 0.12 * clamp((c.infl - 3) / 40, 0, 1)) + (c.iso3 === 'SLV' ? 0.1 : 0), 0.002, 0.3);
+    s.crypto0 *= W.cryptoScale ?? 1;   // historical starts: crypto adoption was lower in earlier years
     s.crypto = s.crypto0; s.cryptoBan = 0;
   }
 }

@@ -1,5 +1,6 @@
 // Builds the static "world": countries, distances, trade matrix and shares, currencies, forecasts, baseline relations.
 import { BLOCS, ALLIES, RIVALRIES, NATO_ADVERSARIES, NUCLEAR } from './blocs.js';
+import { BTC_BY_YEAR } from './calendar.js';
 
 const R = 6371;
 export function haversine(lat1, lon1, lat2, lon2) {
@@ -11,7 +12,7 @@ export function haversine(lat1, lon1, lat2, lon2) {
 
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 
-export function buildWorld(raw, { trade = null, markets = null } = {}) {
+export function buildWorld(raw, { trade = null, markets = null, history = null, startYear = 2026 } = {}) {
   const N = raw.length;
   const idx = new Map(raw.map((c, i) => [c.iso3, i]));
   const countries = raw.map((c, i) => {
@@ -26,6 +27,9 @@ export function buildWorld(raw, { trade = null, markets = null } = {}) {
       openness: clamp((c.exports + c.imports) / 200, 0.05, 1.2),
     };
   });
+
+  // historical start: the state at January of startYear comes from actual data for startYear-1
+  if (startYear < 2026 && history) applyHistory(countries, history, startYear);
 
   // distances between capitals
   const dist = new Float32Array(N * N);
@@ -156,7 +160,7 @@ export function buildWorld(raw, { trade = null, markets = null } = {}) {
   countries.forEach(c => {
     const m = cur[c.iso3] || {};
     c.currency = { code: m.code || 'USD', name: m.name || '', symbol: m.symbol || '', regime: m.regime || (c.iso3 === 'USA' ? 'anchor' : 'float'),
-      anchor: m.anchor || null, rate0: m.rateUSD || 1, fxVol: m.fxVol ?? 0.08 };
+      anchor: m.anchor || null, rate0: (startYear < 2026 && c.fx0) || m.rateUSD || 1, fxVol: m.fxVol ?? 0.08 };
     c.forecast = markets?.forecast?.[c.iso3] || null;
     c.equity = markets?.equity?.[c.iso3] || null;
   });
@@ -166,15 +170,48 @@ export function buildWorld(raw, { trade = null, markets = null } = {}) {
 
   return { N, countries, idx, dist, border, share, partners, base, allies, groups, X, xs, ms, sources, impTot, expTot, expCovered, tradeCover,
     companies: markets?.companies || [],
-    crypto: markets?.crypto || null, worldForecastPPP: markets?.worldForecast || null, worldForecast: forecastMER(countries), marketsAsOf: markets?.asOf || null };
+    startYear,
+    crypto: startYear < 2026 ? { btc: { price: BTC_BY_YEAR[startYear] ?? 1 } } : markets?.crypto || null,
+    cryptoScale: clamp((startYear - 2012) / 12, 0, 1), worldForecastPPP: markets?.worldForecast || null, worldForecast: forecastMER(countries, raw), marketsAsOf: markets?.asOf || null };
+}
+
+// Replace current values with the actual state at the end of startYear-1. Potential growth and the inflation
+// anchor become the averages of the five years before the start (the model's pre-event trend); from 2026 on the
+// engine switches to the IMF WEO forecast. Countries without history are scaled by the median ratio.
+function applyHistory(countries, history, startYear) {
+  const y0 = String(startYear - 1), years = [0, 1, 2, 3, 4].map(k => String(startYear - 1 - k));
+  const ratios = [], popRatios = [];
+  for (const c of countries) {
+    const h = history[c.iso3];
+    if (h?.gdp?.[y0] && h.gdp['2024']) ratios.push(h.gdp[y0] / h.gdp['2024']);
+    if (h?.pop?.[y0] && h.pop['2024']) popRatios.push(h.pop[y0] / h.pop['2024']);
+  }
+  const med = a => { const b = [...a].sort((x, y) => x - y); return b[Math.floor(b.length / 2)] ?? 1; };
+  if (ratios.length < 50) throw new Error(`No World Bank history for ${startYear - 1}: refresh public/data/history.json (npm run history)`);
+  const gR = med(ratios), pR = med(popRatios);
+  const mean = (h, k) => { const v = years.map(y => h?.[k]?.[y]).filter(x => x != null); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+  for (const c of countries) {
+    const h = history[c.iso3] || {};
+    c.gdp = h.gdp?.[y0] ?? c.gdp * gR;
+    c.pop = h.pop?.[y0] ?? c.pop * pR;
+    c.gdpPc = c.gdp / c.pop;
+    if (h.growth?.[y0] != null) c.growth = h.growth[y0];
+    if (h.infl?.[y0] != null) c.infl = h.infl[y0];
+    if (h.unemp?.[y0] != null) c.unemp = h.unemp[y0];
+    if (h.debt?.[y0] != null) c.debt = h.debt[y0];
+    const tg = mean(h, 'growth'), ti = mean(h, 'infl');
+    c.trend = clamp(tg ?? c.growth, -2, 9);
+    c.inflTrend = clamp(ti ?? c.infl, 0.5, 40);
+    c.fx0 = h.fx?.[y0] ?? null;
+  }
 }
 
 // IMF world forecast weighted by GDP at market rates (like the model aggregate); the IMF publishes it in PPP
-function forecastMER(countries) {
+function forecastMER(countries, raw) {
   const out = {};
   for (let y = 2026; y <= 2031; y++) {
-    let w = 0, v = 0;
-    for (const c of countries) { const g = c.forecast?.growth?.[y]; if (g != null) { w += c.gdp; v += c.gdp * g; } }
+    let w = 0, v = 0;   // today's GDP weights, also when the world starts in the past
+    for (const c of countries) { const g = c.forecast?.growth?.[y], gdp = raw[c.i].gdp; if (g != null) { w += gdp; v += gdp * g; } }
     if (w) out[y] = +(v / w).toFixed(2);
   }
   return out;

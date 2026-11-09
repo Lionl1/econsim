@@ -24,7 +24,7 @@ export class Sim {
   reset() {
     const W = this.world, N = W.N;
     this.t = 0;
-    this.startYear = 2026;
+    this.startYear = W.startYear ?? 2026;
     this.oil = 1; this.cyc = 0; this.oilShock = 0;
     this.T = new Float32Array(N * N);          // tariffs: T[i*N+j], the extra duty i charges on goods from j (%)
     this.San = new Uint8Array(N * N);          // sanctions: San[i*N+j] = 1 when i sanctions j
@@ -52,22 +52,22 @@ export class Sim {
 
   initCountry(c) {
     const i = c.i;
-    const gpot = clamp(0.4 * c.growth + 0.6 * (4.6 - 0.36 * Math.log(Math.max(c.gdpPc, 300) / 1000)), -0.5, 7);
+    const gpot = c.trend ?? clamp(0.4 * c.growth + 0.6 * (4.6 - 0.36 * Math.log(Math.max(c.gdpPc, 300) / 1000)), -0.5, 7);
     const infl = clamp(c.infl, -2, 60);
-    const anchor = clamp(infl * P.anchorK, 1.5, 18);
+    const anchor = c.inflTrend != null ? clamp(c.inflTrend, 1, 25) : clamp(infl * P.anchorK, 1.5, 18);
     const debt = clamp(c.debt, 3, 300);
     const stab0 = clamp(0.52 + 0.2 * c.wgiPV + 0.05 * c.wgiGE, 0.08, 0.97);
     const r0 = clamp(anchor + 0.5 * gpot + 0.5 + 0.8 * (infl - anchor), 0.3, 40);
     const unemp = clamp(c.unemp, 0.5, 40);
     const hawk = clamp(0.2 + 0.05 * c.mil + 0.3 * (1 - c.dem) + 0.25 * (hash(this.seed, i, 7777, 1) - 0.5) + (c.nuclear ? 0.05 : 0), 0.02, 0.98);
     const s = {
-      i, gdp: c.gdp, gdp0: c.gdp, pop: c.pop, gpot, gc: clamp(c.growth, -4, 9), g: clamp(c.growth, -4, 9),
+      i, gdp: c.gdp, gdp0: c.gdp, pop: c.pop, pop0: c.pop, gpot, gc: clamp(c.growth, -4, 9), g: clamp(c.growth, -4, 9),
       infl0: infl, infl, inflCore: infl, inflPL: 0, tarPL: 0, tarPLslow: 0, anchor, dLevel: 0, defaultT: 0, unemp0: unemp, unemp, uN: unemp,
       debt, debt0: debt, deficit0: debt * (gpot + anchor) / 100,
       stab0, stab: stab0, sent: 0.5, sentBase: clamp(0.38 + 0.4 * stab0 + 0.06 * c.dem, 0.35, 0.85), protest: 0,
       misery0: Math.min(infl, 60) + unemp,
       f: 0, r: r0, r0, mil0: clamp(c.mil, 0.2, 15), mil: clamp(c.mil, 0.2, 15),
-      level: 0, pulse: 0,
+      level: -Math.max(0, 0.3 - stab0) * 40, pulse: 0,   // start at the steady instability level, not 0 (no first-year transient)
       hawk, coop: clamp(0.55 + 0.25 * c.dem - 0.35 * hawk + 0.15 * (hash(this.seed, i, 7777, 2) - 0.5), 0.05, 0.98),
       protect: clamp(0.3 + 0.3 * (1 - Math.min(1, c.openness)) + 0.3 * (hash(this.seed, i, 7777, 3) - 0.5), 0.02, 0.98),
       dem: c.dem, popGrowth: c.popGrowth,
@@ -205,6 +205,8 @@ export class Sim {
       if (this.t >= t0 && !sc.started) this.startScenario(sc);
       if (this.t >= t0 && this.t < t1) {
         for (const e of sc.effects) {
+          // optional window inside the scenario: active from month `at` for `len` months (phases like crash -> rebound)
+          if (e.at != null && (this.t < t0 + e.at || this.t >= t0 + e.at + (e.len ?? dur))) continue;
           if (e.kind === 'oil') this.oilShock += e.value;
           if (e.kind !== 'shock') continue;
           const idxs = this.targets(e, 'targets');
@@ -355,11 +357,13 @@ export class Sim {
       // the IMF WEO forecast sets the baseline path: potential growth, inflation anchor, natural unemployment
       const fc = c.forecast;
       if (fc) {
-        const fy = Math.min(year, 2031);
+        const fy = Math.min(year, 2031);   // before 2026 there is no forecast: see the convergence rule below
         if (fc.growth?.[fy] != null) s.gpot = clamp(fc.growth[fy], -8, 12);
         if (fc.infl?.[fy] != null) s.anchor += 0.05 * (clamp(fc.infl[fy], 0.5, 80) - s.anchor);
         if (fc.unemp?.[fy] != null) s.uN += 0.05 * (clamp(fc.unemp[fy], 0.5, 40) - s.uN);
       }
+      // historical years: pre-start trend minus beta-convergence (~2 pp per log point of income growth since the start)
+      if (c.trend != null && year < 2026 && t % 12 === 0) s.gpot = Math.max(-1, c.trend - 2 * Math.log((s.gdp / s.pop) / (s.gdp0 / s.pop0)));
       let foreignG = 0, foreignBase = 0, sanc = 0;
       for (const j of W.partners[i]) {
         const w = W.xs[i * N + j];                                   // partner demand weighted by the actual export structure

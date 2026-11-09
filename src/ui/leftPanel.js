@@ -155,28 +155,34 @@ function initPrompt(app) {
   $('#p-ex').innerHTML = EXAMPLES.map(x => `<button class="small chip" style="margin:0 4px 4px 0">${x}</button>`).join('');
   root.querySelectorAll('#p-ex .chip').forEach(b => b.onclick = () => { $('#p-text').value = b.textContent; doParse(); });
   const lab = sel => T.label(sel);
+  const esc = s => String(s).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]);
   const doParse = () => {
     const txt = $('#p-text').value.trim(); if (!txt) return null;
-    parsed = parseEvent(txt, app.world, lab);
-    if (!parsed.ok) { $('#p-res').innerHTML = `<div class="card"><div class="d">${parsed.notes.join('<br>')}</div></div>`; return null; }
-    $('#p-res').innerHTML = `<div class="card"><div class="t">${parsed.title}</div>
-      <div class="d">Распознано: ${parsed.recognized.join(', ')}${parsed.entities.length ? ' · цели: ' + parsed.entities.join(', ') : ''}</div>
-      ${parsed.effects.map(e => `<div class="hint">• ${describeEffect(T, e)}</div>`).join('')}
-      ${parsed.notes.map(n => `<div class="hint" style="color:var(--warn,#f5a524)">⚠ ${n}</div>`).join('')}
-      <div class="form" style="margin-top:8px"><div class="r2"><div><label>Длительность, мес. (0 = пока не закончится)</label><input id="p-dur" type="number" min="0" max="240" value="${parsed.duration}"></div>
-        <div><label>Старт через, мес.</label><input id="p-delay" type="number" min="0" max="120" value="${parsed.delay}"></div></div>
-        <div class="r2"><button class="primary small" id="p-go">▶ Запустить</button><button class="small" id="p-edit">Править в конструкторе</button></div></div></div>`;
-    $('#p-go').onclick = go; $('#p-edit').onclick = () => app.loadDraft({ title: parsed.title, duration: +$('#p-dur').value, delay: +$('#p-delay').value, effects: parsed.effects });
+    parsed = parseEvent(txt, app.world, lab); parsed.text = txt;
+    if (!parsed.ok) { $('#p-res').innerHTML = `<div class="card"><div class="d">${parsed.notes.map(esc).join('<br>')}</div></div>`; return null; }
+    $('#p-res').innerHTML = parsed.parts.map((p, k) => `<div class="card"><div class="t">${esc(p.title)}</div>
+      <div class="d">Распознано: ${p.recognized.join(', ')}${p.entities.length ? ' · цели: ' + p.entities.map(esc).join(', ') : ''}</div>
+      ${p.effects.map(e => `<div class="hint">• ${describeEffect(T, e)}</div>`).join('')}
+      ${p.notes.map(n => `<div class="hint" style="color:var(--warn,#f5a524)">⚠ ${esc(n)}</div>`).join('')}
+      <div class="form" style="margin-top:8px"><div class="r2"><div><label>Длительность, мес. (0 = пока не закончится)</label><input data-dur="${k}" type="number" min="0" max="240" value="${p.duration}"></div>
+        <div><label>Старт через, мес.</label><input data-delay="${k}" type="number" min="0" max="120" value="${p.delay}"></div></div>
+        <button class="small" data-edit="${k}">Править в конструкторе</button></div></div>`).join('')
+      + parsed.notes.map(n => `<div class="hint" style="color:var(--warn,#f5a524)">⚠ ${esc(n)}</div>`).join('')
+      + `<button class="primary" id="p-go" style="width:100%;margin-bottom:8px">▶ Запустить${parsed.parts.length > 1 ? ` все (${parsed.parts.length})` : ''}</button>`;
+    $('#p-go').onclick = go;
+    root.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => { const k = +b.dataset.edit; app.loadDraft({ ...partDef(k), delay: partDelay(k) }); });
     return parsed;
   };
+  const partDur = k => Math.max(0, +root.querySelector(`[data-dur="${k}"]`).value || 0);
+  const partDelay = k => Math.max(0, +root.querySelector(`[data-delay="${k}"]`).value || 0);
+  const partDef = k => ({ title: parsed.parts[k].title, duration: partDur(k), effects: parsed.parts[k].effects.map(e => ({ ...e })) });
   const hist = [];
   const go = () => {
     if (!parsed?.ok) return;
-    const def = { title: parsed.title, duration: Math.max(0, +$('#p-dur').value || 0), effects: parsed.effects.map(e => ({ ...e })) };
-    app.launch(def, +$('#p-delay').value || 0);
-    hist.unshift($('#p-text').value.trim());
-    $('#p-hist').innerHTML = hist.slice(0, 8).map(h => `<div class="hint" style="cursor:pointer" data-h="${encodeURIComponent(h)}">↻ ${h}</div>`).join('');
-    root.querySelectorAll('[data-h]').forEach(el => el.onclick = () => { $('#p-text').value = decodeURIComponent(el.dataset.h); doParse(); });
+    parsed.parts.forEach((_, k) => app.launch(partDef(k), partDelay(k)));
+    hist.unshift(parsed.text);
+    $('#p-hist').innerHTML = hist.slice(0, 8).map((h, k) => `<div class="hint" style="cursor:pointer" data-h="${k}">↻ ${esc(h)}</div>`).join('');
+    root.querySelectorAll('[data-h]').forEach(el => el.onclick = () => { $('#p-text').value = hist[+el.dataset.h]; doParse(); });
     app.refreshImpact();
   };
   $('#p-parse').onclick = doParse;

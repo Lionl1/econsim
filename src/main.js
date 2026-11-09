@@ -27,7 +27,7 @@ async function boot() {
     getJson('/data/countries.json'), getJson('/data/world-50m.json'), getJson('/data/trade.json'), getJson('/data/markets.json'),
   ]);
   const world = buildWorld(raw, { trade, markets });
-  const app = window.app = { world, raw, trade, markets, T: buildTargets(world), metric: 'g', running: false, speed: 1, selected: -1, seed: 1, feedMinor: false };
+  const app = window.app = { world, raw, trade, markets, T: buildTargets(world), metric: 'g', running: false, speed: 1, selected: -1, seed: 1 + Math.floor(Math.random() * 1e6), feedMinor: false };
 
   app.newSims = () => {
     app.sim = new Sim(world, { seed: app.seed });
@@ -96,7 +96,7 @@ async function boot() {
   $('#speed').querySelectorAll('[data-v]').forEach(b => b.onclick = () => {
     app.speed = +b.dataset.v; $('#speed').querySelectorAll('[data-v]').forEach(x => x.classList.toggle('on', x === b));
   });
-  $('#btn-reset').onclick = () => { app.newSims(); app.overlaySig = null; app.lastFeedId = -1; setRunning(false); app.refreshActive(); refreshAll(true); app.toast('Мир перезапущен'); };
+  $('#btn-reset').onclick = () => { app.seed = 1 + Math.floor(Math.random() * 1e6); app.newSims(); app.overlaySig = null; app.lastFeedId = -1; setRunning(false); app.refreshActive(); refreshAll(true); app.toast('Мир перезапущен'); };
   addEventListener('keydown', e => { if (e.code === 'Space' && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) { e.preventDefault(); setRunning(!app.running); } });
   $('#feed-minor').onchange = e => { app.feedMinor = e.target.checked; app.lastFeedId = -1; refreshFeed(); };
   $('#feed-toggle').onclick = () => $('#dock').classList.toggle('feed-open');

@@ -62,11 +62,29 @@ export function buildWorld(raw, { trade = null, markets = null } = {}) {
       const row = trade.exports[countries[i].iso3] || {};
       for (const [iso, v] of Object.entries(row)) { const j = idx.get(iso); if (j != null && j !== i) X[i * N + j] = v; }
     }
+    // a pair i->j is "observed" if the importer j reported imports or the exporter i reported exports;
+    // unobserved pairs get a gravity estimate scaled to the exporter's observed flows (not a zero)
+    const repM = new Set(trade.reportersM || trade.reporters || []), repX = new Set(trade.reportersX || trade.reporters || []);
     for (let i = 0; i < N; i++) {
-      let s = 0; for (let j = 0; j < N; j++) s += X[i * N + j];
-      if (s > 0) { tradeCover++; for (let j = 0; j < N; j++) X[i * N + j] *= expTot[i] / s; }
-      else for (let j = 0; j < N; j++) X[i * N + j] = expTot[i] * share[i * N + j];   // gravity as the fallback
-      countries[i].tradeData = s > 0;
+      const xi = repX.has(countries[i].iso3);
+      let sObs = 0, gObs = 0, gAll = 0;
+      for (let j = 0; j < N; j++) {
+        if (j === i) continue;
+        const obs = xi || repM.has(countries[j].iso3);
+        gAll += share[i * N + j];
+        if (obs) { sObs += X[i * N + j]; gObs += share[i * N + j]; }
+      }
+      if (sObs > 0 && gObs > 0.05) {
+        tradeCover++;
+        const k = sObs / gObs;                                   // $ per unit of gravity share, from observed pairs
+        for (let j = 0; j < N; j++) if (j !== i && !(xi || repM.has(countries[j].iso3))) X[i * N + j] = k * share[i * N + j];
+        let s = 0; for (let j = 0; j < N; j++) s += X[i * N + j];
+        for (let j = 0; j < N; j++) X[i * N + j] *= expTot[i] / s;
+        countries[i].tradeData = true;
+      } else {
+        for (let j = 0; j < N; j++) X[i * N + j] = expTot[i] * share[i * N + j];   // gravity as the fallback
+        countries[i].tradeData = false;
+      }
     }
   } else for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) X[i * N + j] = expTot[i] * share[i * N + j];
   // shares: xs, where i exports to; ms, where i imports from; share, j's share of all of i's trade

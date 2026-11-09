@@ -57,7 +57,8 @@ export class Sim {
     const anchor = c.inflTrend != null ? clamp(c.inflTrend, 1, 25) : clamp(infl * P.anchorK, 1.5, 18);
     const debt = clamp(c.debt, 3, 300);
     const stab0 = clamp(0.52 + 0.2 * c.wgiPV + 0.05 * c.wgiGE, 0.08, 0.97);
-    const r0 = clamp(anchor + 0.5 * gpot + 0.5 + 0.8 * (infl - anchor), 0.3, 40);
+    const rrN = clamp(0.5 + 0.5 * gpot, 0.5, 4);                  // neutral real rate
+    const r0 = clamp(rrN + anchor + 1.5 * (infl - anchor), 0, 60);
     const unemp = clamp(c.unemp, 0.5, 40);
     const hawk = clamp(0.2 + 0.05 * c.mil + 0.3 * (1 - c.dem) + 0.25 * (hash(this.seed, i, 7777, 1) - 0.5) + (c.nuclear ? 0.05 : 0), 0.02, 0.98);
     const s = {
@@ -66,7 +67,7 @@ export class Sim {
       debt, debt0: debt, deficit0: debt * (gpot + anchor) / 100,
       stab0, stab: stab0, sent: 0.5, sentBase: clamp(0.38 + 0.4 * stab0 + 0.06 * c.dem, 0.35, 0.85), protest: 0,
       misery0: Math.min(infl, 60) + unemp,
-      f: 0, r: r0, r0, mil0: clamp(c.mil, 0.2, 15), mil: clamp(c.mil, 0.2, 15),
+      f: 0, r: r0, r0, rrN, mil0: clamp(c.mil, 0.2, 15), mil: clamp(c.mil, 0.2, 15),
       level: -Math.max(0, 0.3 - stab0) * 40, pulse: 0,   // start at the steady instability level, not 0 (no first-year transient)
       hawk, coop: clamp(0.55 + 0.25 * c.dem - 0.35 * hawk + 0.15 * (hash(this.seed, i, 7777, 2) - 0.5), 0.05, 0.98),
       protect: clamp(0.3 + 0.3 * (1 - Math.min(1, c.openness)) + 0.3 * (hash(this.seed, i, 7777, 3) - 0.5), 0.02, 0.98),
@@ -211,6 +212,8 @@ export class Sim {
           if (e.kind !== 'shock') continue;
           const idxs = this.targets(e, 'targets');
           const mean = e.scale && e.scale !== 'none' ? this.meanOf(e.scale) : 1;
+          // one-off amounts (level/pop/debt) are spread over the effect's own window if it has one, else over the scenario
+          const spread = e.at != null ? (e.len ?? dur) : once, spreadOn = e.at != null || onceActive;
           for (const i of idxs) {
             const s = this.S[i], c = this.world.countries[i];
             const k = e.scale && e.scale !== 'none' ? clamp((c[e.scale] ?? mean) / mean, 0.2, 3) : 1;
@@ -223,9 +226,9 @@ export class Sim {
               case 'sent': s.mods.sent += v; break;
               case 'mil': s.mods.mil += v; break;
               case 'fiscal': s.mods.f += v; break;
-              case 'level': if (onceActive) s.pulse += v / once; break;       // % of GDP over the whole duration
-              case 'pop': if (onceActive) s.pop *= 1 + v / once / 100; break;
-              case 'debt': if (onceActive) s.debt += v / once; break;
+              case 'level': if (spreadOn) s.pulse += v / spread; break;       // % of GDP over the whole duration
+              case 'pop': if (spreadOn) s.pop *= 1 + v / spread / 100; break;
+              case 'debt': if (spreadOn) s.debt += v / spread; break;
               case 'fx': s.mods.fx += v; break;                               // % depreciation vs USD (while active)
               case 'equity': if (this.t === t0) s.eqJump = (1 + s.eqJump) * (1 + v / 100) - 1; break;   // one-off market crash/rally, %
               case 'cryptoBan': s.cryptoBan = 1; break;
@@ -362,6 +365,8 @@ export class Sim {
         if (fc.infl?.[fy] != null) s.anchor += 0.05 * (clamp(fc.infl[fy], 0.5, 80) - s.anchor);
         if (fc.unemp?.[fy] != null) s.uN += 0.05 * (clamp(fc.unemp[fy], 0.5, 40) - s.uN);
       }
+      // historical years: the inflation anchor drifts to modern targets over ~3 years (the 1995–2015 move to inflation targeting)
+      if (c.inflTrend != null && year < 2026) s.anchor += ((c.income === 'HIC' ? 2 : 3.5) - s.anchor) / 36;
       // historical years: pre-start trend minus beta-convergence (~2 pp per log point of income growth since the start)
       if (c.trend != null && year < 2026 && t % 12 === 0) s.gpot = Math.max(-1, c.trend - 2 * Math.log((s.gdp / s.pop) / (s.gdp0 / s.pop0)));
       let foreignG = 0, foreignBase = 0, sanc = 0;
@@ -385,7 +390,7 @@ export class Sim {
       const spill = 0.35 * c.openness * (foreignG - foreignBase);
       const fEff = s.f + m.f;
       const milExtra = s.mil - s.mil0;
-      const tight = s.r - (s.r0 + (s.infl - s.infl0));   // policy stance relative to the "neutral" path
+      const tight = s.r - (s.rrN + s.infl);   // real policy rate minus the neutral real rate (>0 = restrictive)
       const target = s.gpot + P.fiscalMult * fEff + equityGrowth(this, s) + 2 * s.crypto * clamp(this.btcMom || 0, -1, 1) + 0.1 * milExtra - 0.25 * tight + spill + oilEff + m.g + P.cycAmp * this.cyc * c.openness
         + P.gNoise * (c.income === 'LIC' ? P.volLIC : c.income === 'HIC' ? P.volHIC : 1) * this.gs(i, 1);
       s.gc += P.gAdj * (target - s.gc);
@@ -397,13 +402,17 @@ export class Sim {
       // inflation = core + one-off price-level shifts (tariffs, exchange rate) that stay in annual inflation for ~a year
       const oilInfl = P.oilInfl * (p - 1) * Math.max(e, 0);
       const inflT = s.anchor + 0.25 * (s.gc - s.gpot) + 0.35 * fEff + oilInfl - 0.3 * tight + m.infl;
-      // noise is a separate AR(1) component with the same persistence, so the lower bound does not accumulate in the state (that would bias inflation up)
-      s.inflCore = clamp(s.inflCore + P.inflAdj * (inflT - s.inflCore), -5, 150);
-      s.inflN = (1 - P.inflAdj) * (s.inflN || 0) + P.inflNoise * clamp(P.inflScale0 + P.inflScaleK * s.anchor, 0.2, 3) * this.gs(i, 2);
+      // noise is a separate AR(1) component, multiplicative around (core + 3): inflation is right-skewed in the data,
+      // deep deflation is rare, and low-inflation countries swing less than high-inflation ones
+      s.inflCore = clamp(s.inflCore + P.inflAdj * (inflT - s.inflCore), -2, 150);
+      s.inflN = (1 - P.inflAdj) * (s.inflN || 0) + P.inflNoise * this.gs(i, 2);
+      // centered: exp(n - var/2) has mean 1, so the noise does not lift average inflation
+      const nVar = P.inflNoise ** 2 / (1 - (1 - P.inflAdj) ** 2);
+      const inflNoisy = (Math.max(s.inflCore, -2) + 3) * Math.exp(s.inflN - nVar / 2) - 3;
       s.tarPL += 0.15 * (P.tariffPass * c.imports * s.tauImp - s.tarPL);
       s.tarPLslow += (s.tarPL - s.tarPLslow) / 12;
       s.inflPL = (s.tarPL - s.tarPLslow) + (s.fxPL - s.fxPLslow);
-      s.infl = clamp(s.inflCore + s.inflN + s.inflPL, -1.5, 300);
+      s.infl = clamp(inflNoisy + s.inflPL, -3, 300);
       m.sent += 0.15 * s.crypto * clamp(this.btcMom || 0, -1.5, 1.5);
 
       // unemployment (Okun's law)

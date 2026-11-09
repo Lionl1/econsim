@@ -8,7 +8,9 @@ export function decide(sim, i) {
 
   // --- monetary policy (monthly): Taylor rule, moves capped at 0.5 pp ---
   const gap = s.gc - s.gpot;
-  const rT = clamp(s.r0 + 1.3 * (s.infl - s.infl0) + 0.4 * gap, 0, 45);
+  // Taylor (1993) around the current inflation anchor, not the starting inflation: when the anchor moves
+  // (e.g. disinflation along the IMF path) the neutral rate moves with it; zero lower bound
+  const rT = clamp(s.rrN + s.anchor + 1.5 * (s.infl - s.anchor) + 0.5 * gap, 0, 60);
   s.r += clamp(rT - s.r, -0.5, 0.5);
 
   // --- military spending: response to threats ---

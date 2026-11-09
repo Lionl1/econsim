@@ -3,7 +3,7 @@
 export const P = {
   fiscalMult: 0.5,      // fiscal multiplier (Ramey 2019: 0.6–1; lower in EMs)
   // calibrated to World Bank series 2000–2024
-  gNoise: 7.8, cycAmp: 0.6, cycNoise: 8, inflNoise: 1.3, gAdj: 0.5, inflAdj: 0.07, okun: 0.32, cycPers: 0.8, volLIC: 1.3, volHIC: 0.95, anchorK: 0.85, inflScale0: 0.3, inflScaleK: 0.28, oilInfl: 10,
+  gNoise: 7.8, cycAmp: 0.6, cycNoise: 8, inflNoise: 0.16, gAdj: 0.5, inflAdj: 0.07, okun: 0.32, cycPers: 0.8, volLIC: 1.3, volHIC: 0.95, anchorK: 0.85, oilInfl: 10,
   // trade
   tradeElast: 3,        // elasticity of substitution between suppliers (Head & Mayer 2014: 3–6; short-run ~1, Boehm et al. 2023)
   tradeAdj: 1 / 18,     // supply chain adjustment speed, 1/month

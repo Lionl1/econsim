@@ -189,6 +189,7 @@ function applyHistory(countries, history, startYear) {
   const med = a => { const b = [...a].sort((x, y) => x - y); return b[Math.floor(b.length / 2)] ?? 1; };
   if (ratios.length < 50) throw new Error(`No World Bank history for ${startYear - 1}: refresh public/data/history.json (npm run history)`);
   const gR = med(ratios), pR = med(popRatios);
+  const medianOf = v => v.length ? [...v].sort((a, b) => a - b)[Math.floor(v.length / 2)] : null;
   const mean = (h, k) => { const v = years.map(y => h?.[k]?.[y]).filter(x => x != null); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
   for (const c of countries) {
     const h = history[c.iso3] || {};
@@ -199,7 +200,8 @@ function applyHistory(countries, history, startYear) {
     if (h.infl?.[y0] != null) c.infl = h.infl[y0];
     if (h.unemp?.[y0] != null) c.unemp = h.unemp[y0];
     if (h.debt?.[y0] != null) c.debt = h.debt[y0];
-    const tg = mean(h, 'growth'), ti = mean(h, 'infl');
+    // growth trend: 5-year mean; inflation: 5-year median (robust to one-off crisis spikes like 1995 Russia or 1998 Asia)
+    const tg = mean(h, 'growth'), ti = medianOf(years.map(y => h.infl?.[y]).filter(x => x != null));
     c.trend = clamp(tg ?? c.growth, -2, 9);
     c.inflTrend = clamp(ti ?? c.infl, 0.5, 40);
     c.fx0 = h.fx?.[y0] ?? null;

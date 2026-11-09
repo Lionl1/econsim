@@ -38,7 +38,7 @@ function metrics(series /* [{g:[],infl:[],u:[],w:number(gdp weight),inc}] */, wo
 }
 
 // --- data ---
-const CRISES = new Set(['2001', '2008', '2009', '2010', '2020', '2021']);
+const CRISES = new Set(['2001', '2008', '2009', '2010', '2020', '2021', '2022', '2023']);
 const big = new Set([...raw].sort((a, b) => b.gdp - a.gdp).slice(0, 10).map(c => c.iso3));
 const dataMoments = calm => {
   const years = Array.from({ length: 25 }, (_, k) => String(2000 + k)).filter(y => !calm || !CRISES.has(y));

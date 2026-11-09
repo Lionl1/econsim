@@ -11,7 +11,7 @@ export function haversine(lat1, lon1, lat2, lon2) {
 
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 
-export function buildWorld(raw) {
+export function buildWorld(raw, { trade = null, markets = null } = {}) {
   const N = raw.length;
   const idx = new Map(raw.map((c, i) => [c.iso3, i]));
   const countries = raw.map((c, i) => {
@@ -51,6 +51,38 @@ export function buildWorld(raw) {
     }
     for (let j = 0; j < N; j++) share[i * N + j] /= sum;
   }
+  // ---- реальная торговля (UN Comtrade) ----
+  // X[i*N+j] — экспорт i в j, млн $. Структура по партнёрам — из Comtrade (товары), итог — экспорт по World Bank
+  // (товары+услуги). Страны без данных Comtrade получают гравитационную структуру.
+  const X = new Float64Array(N * N);
+  const expTot = countries.map(c => c.exports / 100 * c.gdp / 1e6);               // млн $
+  let tradeCover = 0;
+  if (trade?.exports) {
+    for (let i = 0; i < N; i++) {
+      const row = trade.exports[countries[i].iso3] || {};
+      for (const [iso, v] of Object.entries(row)) { const j = idx.get(iso); if (j != null && j !== i) X[i * N + j] = v; }
+    }
+    for (let i = 0; i < N; i++) {
+      let s = 0; for (let j = 0; j < N; j++) s += X[i * N + j];
+      if (s > 0) { tradeCover++; for (let j = 0; j < N; j++) X[i * N + j] *= expTot[i] / s; }
+      else for (let j = 0; j < N; j++) X[i * N + j] = expTot[i] * share[i * N + j];   // гравитация как запасной вариант
+      countries[i].tradeData = s > 0;
+    }
+  } else for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) X[i * N + j] = expTot[i] * share[i * N + j];
+  // доли: xs — куда i экспортирует, ms — откуда i импортирует, share — доля j во всей торговле i
+  const xs = new Float32Array(N * N), ms = new Float32Array(N * N);
+  const impTot = new Float64Array(N);
+  for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) impTot[j] += X[i * N + j];
+  for (let i = 0; i < N; i++) {
+    let sx = 0, st = 0;
+    for (let j = 0; j < N; j++) { sx += X[i * N + j]; st += X[i * N + j] + X[j * N + i]; }
+    for (let j = 0; j < N; j++) {
+      xs[i * N + j] = sx ? X[i * N + j] / sx : 0;
+      ms[i * N + j] = impTot[i] ? X[j * N + i] / impTot[i] : 0;
+      if (trade?.exports && st > 0) share[i * N + j] = (X[i * N + j] + X[j * N + i]) / st;
+    }
+  }
+
   // топ-партнёры для быстрого обхода
   const partners = countries.map((_, i) => {
     const arr = [];
@@ -93,7 +125,41 @@ export function buildWorld(raw) {
     if (c.energyImp > 40) (groups['energyImp'] ??= []).push(c.i);
   });
 
-  return { N, countries, idx, dist, border, share, partners, base, allies, groups };
+  // источники импорта для торговой модели: топ по доле импорта
+  const sources = countries.map((_, i) => {
+    const arr = [];
+    for (let j = 0; j < N; j++) if (ms[i * N + j] > 0) arr.push(j);
+    arr.sort((a, b) => ms[i * N + b] - ms[i * N + a]);
+    return arr.slice(0, 45);
+  });
+
+  // ---- валюты, прогнозы, крипта ----
+  const cur = markets?.currencies || {};
+  countries.forEach(c => {
+    const m = cur[c.iso3] || {};
+    c.currency = { code: m.code || 'USD', name: m.name || '', symbol: m.symbol || '', regime: m.regime || (c.iso3 === 'USA' ? 'anchor' : 'float'),
+      anchor: m.anchor || null, rate0: m.rateUSD || 1, fxVol: m.fxVol ?? 0.08 };
+    c.forecast = markets?.forecast?.[c.iso3] || null;
+    c.equity = markets?.equity?.[c.iso3] || null;
+  });
+  // экспорт, учтённый в торговой модели (пары «поставщик из топа источников импортёра»)
+  const expCovered = new Float64Array(N);
+  for (let i = 0; i < N; i++) for (const j of sources[i]) expCovered[j] += X[j * N + i];
+
+  return { N, countries, idx, dist, border, share, partners, base, allies, groups, X, xs, ms, sources, impTot, expTot, expCovered, tradeCover,
+    companies: markets?.companies || [],
+    crypto: markets?.crypto || null, worldForecastPPP: markets?.worldForecast || null, worldForecast: forecastMER(countries), marketsAsOf: markets?.asOf || null };
+}
+
+// прогноз IMF для мира, взвешенный по ВВП в рыночных курсах (как и агрегат модели); IMF публикует его в ППС
+function forecastMER(countries) {
+  const out = {};
+  for (let y = 2026; y <= 2031; y++) {
+    let w = 0, v = 0;
+    for (const c of countries) { const g = c.forecast?.growth?.[y]; if (g != null) { w += c.gdp; v += c.gdp * g; } }
+    if (w) out[y] = +(v / w).toFixed(2);
+  }
+  return out;
 }
 
 // «Селектор» цели -> массив индексов. Примеры: 'all', 'iso:USA', 'region:Europe', 'bloc:NATO', 'oilExp'

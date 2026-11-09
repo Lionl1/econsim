@@ -71,10 +71,11 @@ export class Sim {
       stab0, stab: stab0, sent: 0.5, sentBase: clamp(0.38 + 0.4 * stab0 + 0.06 * c.dem, 0.35, 0.85), protest: 0,
       misery0: Math.min(infl, 60) + unemp,
       f: 0, r: r0, r0, rrN, mil0: clamp(c.mil, 0.2, 15), mil: clamp(c.mil, 0.2, 15),
-      level: -Math.max(0, 0.3 - stab0) * 40, pulse: 0,
+      level: -Math.max(0, 0.3 - stab0) * 40, pulse: 0,   // start at the steady instability level, not 0 (no first-year transient)
       // shock size: large diversified economies are less volatile (volatility falls with size, Canning et al. 1998),
       // poorer ones more
-      vol: clamp(Math.pow(c.gdp / 1e11, -P.volSize), 0.3, 2.5) * (c.income === 'LIC' ? P.volLIC : c.income === 'HIC' ? P.volHIC : 1),   // start at the steady instability level, not 0 (no first-year transient)
+      vol: clamp(Math.pow(c.gdp / 1e11, -P.volSize), 0.3, 2.5) * (c.income === 'LIC' ? P.volLIC : c.income === 'HIC' ? P.volHIC : 1),
+      gN: 0,   // persistent part of the growth shock (AR(1), see P.gPers)
       hawk, coop: clamp(0.55 + 0.25 * c.dem - 0.35 * hawk + 0.15 * (hash(this.seed, i, 7777, 2) - 0.5), 0.05, 0.98),
       protect: clamp(0.3 + 0.3 * (1 - Math.min(1, c.openness)) + 0.3 * (hash(this.seed, i, 7777, 3) - 0.5), 0.02, 0.98),
       dem: c.dem, popGrowth: c.popGrowth,
@@ -404,7 +405,13 @@ export class Sim {
       // price jumps): with realized inflation, right-skewed spikes the rate cannot catch up with read as easing
       const tight = s.r - (s.rrN + s.inflCore);   // >0 = restrictive
       const target = s.gpot + P.fiscalMult * fEff + equityGrowth(this, s) + 2 * s.crypto * clamp(this.btcMom || 0, -1, 1) + 0.1 * milExtra - 0.25 * tight + spill + oilEff + m.g + P.cycAmp * this.cyc * c.openness
-        + this.noise * P.gNoise * s.vol * this.gs(i, 1);
+        + this.noise * s.vol * (P.gNoise * this.gs(i, 1) + P.gPersNoise * s.gN)
+        // centered in levels: persistent shocks make log GDP a random walk, and E[exp(x)] > exp(E[x]) would lift the
+        // expected GDP level (and world growth) above the no-shock path by half the variance added each month
+        - (this.noise * s.vol * P.gPersNoise) ** 2 * (1 + P.gPers) / (2400 * (1 - P.gPers));
+      // persistent country shock (unit variance, monthly persistence P.gPers): growth spells last more than a year,
+      // as in the data (annual growth autocorrelation ~0.3), instead of iid monthly noise that averages out within the year
+      s.gN = P.gPers * s.gN + Math.sqrt(1 - P.gPers ** 2) * this.gs(i, 5);
       s.gc += P.gAdj * (target - s.gc);
       s.g = s.gc + 12 * dLevel;
       newG[i] = s.g;
@@ -421,9 +428,10 @@ export class Sim {
       // deep deflation is rare, and low-inflation countries swing less than high-inflation ones
       s.inflCore = clamp(s.inflCore + P.inflAdj * (inflT - s.inflCore), -2, 150);
       s.inflN = (1 - P.inflAdj) * (s.inflN || 0) + this.noise * P.inflNoise * this.gs(i, 2);
+      const iv = c.income === 'LIC' ? P.inflVolLIC : 1;   // low-income CPI swings more (food share, supply shocks)
       // centered: exp(n - var/2) has mean 1, so the noise does not lift average inflation
       const nVar = (this.noise * P.inflNoise) ** 2 / (1 - (1 - P.inflAdj) ** 2);
-      const inflNoisy = (Math.max(s.inflCore, -2) + P.inflShift) * Math.exp(s.inflN - nVar / 2) - P.inflShift;
+      const inflNoisy = (Math.max(s.inflCore, -2) + P.inflShift) * Math.exp(iv * s.inflN - iv * iv * nVar / 2) - P.inflShift;
       s.tarPL += 0.15 * (P.tariffPass * c.imports * s.tauImp - s.tarPL);
       s.tarPLslow += (s.tarPL - s.tarPLslow) / 12;
       s.inflPL = (s.tarPL - s.tarPLslow) + (s.fxPL - s.fxPLslow);
@@ -432,8 +440,9 @@ export class Sim {
       m.sent += 0.15 * s.crypto * clamp(this.btcMom || 0, -1.5, 1.5);
 
       // unemployment (Okun's law)
-      // plus its own small shocks (structural shifts, labor force, measurement)
-      s.unemp = clamp(s.unemp + (-P.okun * (s.gc - s.gpot) / 12) + 0.08 * (s.uN + m.unemp - s.unemp) + this.noise * P.uNoise * this.gs(i, 4), 0.4, 50);
+      // plus its own small shocks (structural shifts, labor force, measurement); the link is weaker where informal work
+      // absorbs downturns (Ball, Leigh & Loungani 2017: Okun coefficients ~0.4 in advanced economies, ~0.2 or less elsewhere)
+      s.unemp = clamp(s.unemp + (-(c.income === 'HIC' ? P.okunHIC : P.okun) * (s.gc - s.gpot) / 12) + 0.08 * (s.uN + m.unemp - s.unemp) + this.noise * P.uNoise * this.gs(i, 4), 0.4, 50);
 
       // public debt
       const deficit = s.deficit0 + fEff + (s.mil - s.mil0) + s.debt / 100 * Math.max(-3, s.r - s.r0);

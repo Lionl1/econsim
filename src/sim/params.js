@@ -3,11 +3,14 @@
 export const P = {
   fiscalMult: 0.5,      // fiscal multiplier (Ramey 2019: 0.6–1; lower in EMs)
   // calibrated to World Bank series 2000–2024, calm years (the baseline has no crisis events; the calendar adds them)
-  uNoise: 0.2,         // own unemployment shocks, pp per month
-  gNoise: 7, cycAmp: 0.6, cycNoise: 3.3, inflNoise: 0.17, gAdj: 0.5, inflAdj: 0.07, okun: 0.32, cycPers: 0.8, volLIC: 1.5, volHIC: 1.2, anchorK: 0.85, oilInfl: 10,
+  uNoise: 0.33,         // own unemployment shocks, pp per month
+  gNoise: 4.3, cycAmp: 0.6, cycNoise: 3.3, inflNoise: 0.2, gAdj: 0.5, inflAdj: 0.07, okun: 0.1, cycPers: 0.8, volLIC: 1.5, volHIC: 1.2, anchorK: 0.85, oilInfl: 10,
+  gPers: 0.96, gPersNoise: 2.1,   // persistent growth shock: monthly AR(1) persistence and size, pp
+  okunHIC: 0.35,        // Okun coefficient in high-income economies (P.okun elsewhere)
+  inflVolLIC: 1.6,       // inflation noise multiplier for low-income countries
   volSize: 0.13,        // growth shock size ∝ (GDP / $100 bn)^(−volSize)
   // inflation and the baseline path
-  inflShift: 3,         // inflation noise is multiplicative around (core + inflShift): right-skewed, deflation rare and shallow
+  inflShift: 1,         // inflation noise is multiplicative around (core + inflShift): right-skewed, deflation rare and shallow
   anchorTrack: 0.25,    // monthly speed at which the inflation anchor follows the IMF path (interpolated by month)
   headlineShare: 0.7,   // share of energy/food/scenario price shocks that hits headline CPI directly (the rest via core)
   inflLead: 10,         // months the anchor leads the IMF path, offsetting the inertia of core inflation

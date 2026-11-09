@@ -3,14 +3,16 @@
 import { hash, gauss } from './rng.js';
 
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+// id агента-гражданина: отдельное от индексов стран пространство, чтобы не делить с ними случайные числа
+const cid = (i, k) => 1_000_000 + i * 1000 + k;
 
 export function initCitizens(sim, s, c) {
   const n = clamp(Math.round(16 + 14 * Math.log10(Math.max(c.pop, 1e5) / 1e5)), 16, 100);
   const cit = { n, inc: new Float32Array(n), sent: new Float32Array(n), emp: new Uint8Array(n), prot: new Uint8Array(n) };
   for (let k = 0; k < n; k++) {
     cit.inc[k] = (k + 0.5) / n;
-    cit.sent[k] = clamp(s.sentBase + 0.03 * gauss(sim.seed, s.i * 1000 + k, 0, 70), 0, 1);
-    cit.emp[k] = hash(sim.seed, s.i * 1000 + k, 0, 71) < s.unemp / 100 ? 0 : 1;
+    cit.sent[k] = clamp(s.sentBase + 0.03 * gauss(sim.seed, cid(s.i, k), 0, 70), 0, 1);
+    cit.emp[k] = hash(sim.seed, cid(s.i, k), 0, 71) < s.unemp / 100 ? 0 : 1;
   }
   s.cit = cit; s.sent = cit.sent.reduce((a, b) => a + b, 0) / n;
 }
@@ -22,7 +24,7 @@ export function updateCitizens(sim, s, c) {
   const gini = c.gini / 40;
   let sum = 0, prot = 0;
   for (let k = 0; k < n; k++) {
-    const id = i * 1000 + k;
+    const id = cid(i, k);
     // рынок труда: часть агентов перебрасывается между занятостью и безработицей
     if (hash(sim.seed, id, t, 72) < 0.12) cit.emp[k] = hash(sim.seed, id, t, 73) < clamp(ur * (1.7 - 1.4 * cit.inc[k]), 0, 0.92) ? 0 : 1;
     const target = s.sentBase
@@ -73,7 +75,7 @@ function migrate(sim, s, c, id) {
     ws.push(w); tot += w;
   }
   if (tot <= 0) return;
-  let r = hash(sim.seed, id, sim.t, 77) * tot, pick = -1;
+  let r = hash(sim.seed, id, sim.t, 84) * tot, pick = -1;
   for (let k = 0; k < ws.length; k++) { r -= ws[k]; if (r <= 0) { pick = W.partners[i][k]; break; } }
   if (pick < 0) return;
   const mass = 0.02 * s.pop / s.cit.n;

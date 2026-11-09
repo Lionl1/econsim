@@ -20,15 +20,23 @@ const ALIASES = [
   ['богат', ['income:HIC']], ['бедн', ['income:LIC']], ['развив', ['income:LMC', 'income:LIC']],
 ];
 
+// слово названия -> {word, base}: base без окончания, к нему допускаются падежные окончания из ENDINGS
+const STRIP = /(ая|ое|ые|ий|ый|ой|ия|ея|я|а|ь|й|о|и|ы|е)$/;
+const ENDINGS = new Set(['', 'а', 'ы', 'е', 'у', 'и', 'ю', 'я', 'й', 'ой', 'ою', 'ей', 'ем', 'ом', 'ии', 'ию', 'ия', 'ией', 'ая', 'ую', 'ые', 'ых', 'ым', 'ыми', 'ого', 'ому', 'ий', 'ый', 'ое', 'ие', 'их', 'им', 'ами', 'ах', 'ам', 'ея', 'еи', 'ее', 'ею', 'еей']);
+const wordMatch = (tok, p) => tok === p.word || (p.base.length >= 3 && tok.startsWith(p.base) && ENDINGS.has(tok.slice(p.base.length)));
 function countryIndex(world) {
   return world.countries.map(c => {
-    const words = norm(c.nameRu).split(/[\s-]+/).filter(w => w.length > 1);
-    const stems = words.map(w => (w.length <= 4 ? w : w.slice(0, Math.max(4, w.length - 2))));
-    return { iso: c.iso3, stems, len: stems.join('').length };
-  }).sort((a, b) => b.stems.length - a.stems.length || b.len - a.len);
+    const words = norm(c.nameRu).split(/[\s-]+/).filter(Boolean);
+    const parts = words.map(w => ({ word: w, base: w.length > 3 ? w.replace(STRIP, '') : w }));
+    return { iso: c.iso3, parts, len: words.join('').length };
+  }).sort((a, b) => b.parts.length - a.parts.length || b.len - a.len);
 }
 
-const KW = /(война|вторжен|вторга|напад|атак|удар|воюет|обстрел|захват|санкци|эмбарго|изоляц|пошлин|тариф|торгов[а-я]* войн|нефт|землетряс|цунами|ураган|наводнен|стихийн|извержен|засух|неурожай|голод|пандеми|эпидеми|вирус|карантин|кризис|рецесси|крах|банкротств|пузыр|дефолт|переворот|революци|мятеж|восстани|беспорядк|протест|теракт|кибератак|взлом|забастовк|инфляц|безработиц|военн[а-я]* (расход|бюджет)|вооруж|милитариз|бум(?![а-я])|подъем|прорыв|технологическ|стимул|реформ|помощ|грант|союз|сближен|примирен|перемири|дружб|договор|альянс|ссор|конфликт|напряжен|разрыв|эскалац)/;
+// обычные слова, совпадающие с названиями стран: страной считаются только с заглавной буквы
+const STOP = new Set(['того']);
+// (?<![а-я]) — начало слова: \b в JS не работает с кириллицей
+
+const KW = /(?<![а-я])(война|вторжен|вторга|напад|атак|удар|воюет|обстрел|захват|санкци|эмбарго|изоляц|пошлин|тариф|торгов[а-я]* войн|нефт|землетряс|цунами|ураган|наводнен|стихийн|извержен|засух|неурожай|голод|пандеми|эпидеми|вирус|карантин|кризис|рецесси|крах|банкротств|пузыр|дефолт|переворот|революци|мятеж|восстани|беспорядк|протест|теракт|кибератак|взлом|забастовк|инфляц|безработиц|военн[а-я]* (расход|бюджет)|вооруж|милитариз|бум(?![а-я])|подъем|прорыв|технологическ|стимул|реформ|помощ|грант|союз|сближен|примирен|перемири|дружб|договор|альянс|ссор|конфликт|напряжен|разрыв|эскалац)/;
 
 export function parseEvent(textRaw, world, lab = null) {
   // несколько событий в одной фразе: делим по запятым/«и»/«;», склеивая куски без ключевых слов с предыдущим
@@ -39,16 +47,15 @@ export function parseEvent(textRaw, world, lab = null) {
     if (units.length && KW.test(s) && KW.test(norm(units[units.length - 1]))) units.push(sg);
     else if (units.length) units[units.length - 1] += ' и ' + sg; else units.push(sg);
   }
-  if (units.length <= 1) return parseOne(textRaw, world, lab);
-  const parts = units.map(u => parseOne(u, world, lab)), okp = parts.filter(p => p.ok);
-  if (!okp.length) return parts[0];
-  return { ok: true, title: okp.map(p => p.title).join(' + '), duration: Math.max(...okp.map(p => p.duration)), delay: Math.min(...okp.map(p => p.delay)),
-    effects: okp.flatMap(p => p.effects), notes: parts.flatMap(p => p.notes), recognized: okp.flatMap(p => p.recognized), entities: okp.flatMap(p => p.entities) };
+  // каждое событие — отдельный сценарий со своими сроком и задержкой
+  const parts = (units.length <= 1 ? [textRaw] : units).map(u => parseOne(u, world, lab)), okp = parts.filter(p => p.ok);
+  if (!okp.length) return { ok: false, notes: parts.flatMap(p => p.notes), parts: [] };
+  return { ok: true, parts: okp, notes: parts.filter(p => !p.ok).flatMap(p => p.notes.slice(0, -1)) };
 }
 
 function parseOne(textRaw, world, lab = null) {
   const text = norm(textRaw);
-  const toks = [...text.matchAll(/[a-zа-я0-9%+−\-.,]+/g)].map(m => ({ w: m[0].replace(/[,.]+$/, ''), pos: m.index, used: false }));
+  const toks = [...text.matchAll(/[a-zа-я0-9]+/g)].map(m => ({ w: m[0], pos: m.index, used: false }));
   const notes = [];
   // ---- сущности ----
   const ents = [];
@@ -58,7 +65,7 @@ function parseOne(textRaw, world, lab = null) {
     if (toks[k].used) continue;
     let hit = false;
     for (const c of idx) {          // страны (сначала многословные)
-      if (c.stems.length > 1 && c.stems.every((s, q) => toks[k + q] && !toks[k + q].used && toks[k + q].w.startsWith(s))) { take(k, c.stems.length, ['iso:' + c.iso], c.iso); hit = true; break; }
+      if (c.parts.length > 1 && c.parts.every((p, q) => toks[k + q] && !toks[k + q].used && wordMatch(toks[k + q].w, p))) { take(k, c.parts.length, ['iso:' + c.iso], c.iso); hit = true; break; }
     }
     if (hit) continue;
     for (const [pre, sel, exact] of ALIASES) {
@@ -66,13 +73,14 @@ function parseOne(textRaw, world, lab = null) {
       if (exact ? w === pre : w.startsWith(pre)) { take(k, 1, sel, pre); hit = true; break; }
     }
     if (hit) continue;
-    for (const c of idx) if (c.stems.length === 1 && toks[k].w.length >= 4 && toks[k].w.startsWith(c.stems[0]) && toks[k].w.length <= c.stems[0].length + 4) { take(k, 1, ['iso:' + c.iso], c.iso); hit = true; break; }
+    for (const c of idx) if (c.parts.length === 1 && !(STOP.has(toks[k].w) && !/^[А-ЯЁ]/.test(textRaw.slice(toks[k].pos, toks[k].pos + 1))) && wordMatch(toks[k].w, c.parts[0])) { take(k, 1, ['iso:' + c.iso], c.iso); hit = true; break; }
   }
   const sorted = ents.sort((a, b) => a.pos - b.pos);
   const labels = sorted.map(e => (lab ? lab(e.sel) : e.label));
   const proPos = (() => { const t = toks.find(t => t.w === 'против'); return t ? t.pos : -1; })();
   let A = null, B = null;
-  if (proPos >= 0) { B = sorted.find(e => e.pos > proPos); A = [...sorted].reverse().find(e => e.pos < proPos); }
+  const group = list => (list.length ? { pos: list[0].pos, sel: [...new Set(list.flatMap(e => e.sel))] } : null);
+  if (proPos >= 0) { B = group(sorted.filter(e => e.pos > proPos)); A = group(sorted.filter(e => e.pos < proPos)); }
   else { A = sorted[0]; B = sorted[1]; }
   const one = sorted[0];
 
@@ -80,16 +88,17 @@ function parseOne(textRaw, world, lab = null) {
   const pctM = text.match(/([+\-−]?\s?\d+(?:[.,]\d+)?)\s*(%|процент|п\.п)/);
   const pct = pctM ? Math.abs(parseFloat(pctM[1].replace(',', '.').replace(/\s/g, ''))) : null;
   let duration = null, delay = 0;
-  const dM = text.match(/(\d+)\s*(месяц|мес|год|лет)/);
+  const dM = [...text.matchAll(/(\d+)\s*(месяц|мес|год|лет)/g)].find(m => !/через\s*$/.test(text.slice(0, m.index)));
   if (dM) { duration = +dM[1] * (dM[2].startsWith('м') ? 1 : 12); }
   else if (/полгода|полугод/.test(text)) duration = 6;
   else if (/(на|течение|около)\s+(один\s+|одного\s+)?(год|года)(?![а-я])/.test(text)) duration = 12;
   const dl = text.match(/через\s+(\d+)\s*(месяц|мес|год|лет)/);
-  if (dl) { delay = +dl[1] * (dl[2].startsWith('м') ? 1 : 12); if (duration && dM && dM.index === dl.index + 'через '.length) duration = null; }
+  if (dl) delay = +dl[1] * (dl[2].startsWith('м') ? 1 : 12);
   const strong = /(сильн|мощн|катастроф|масштабн|разрушительн|тяжел|глубок)/.test(text) ? 1.6 : /(небольш|слаб|легк|незначит|умерен)/.test(text) ? 0.5 : 1;
   const sh = (targets, v, value, extra = {}) => ({ kind: 'shock', targets, var: v, value: +(value).toFixed(2), ...extra });
   const effects = []; let dur = 0; let title = null; const recognized = [];
-  const has = re => re.test(text);
+  const evText = text.replace(/(?<![а-я])(с|при) помощ[а-я]*/g, m => ' '.repeat(m.length));   // «с помощью» — не событие
+  const has = re => re.test(evText);
   const targetOf = e => e ? e.sel : ['all'];
 
   // ---- события ----
@@ -99,8 +108,12 @@ function parseOne(textRaw, world, lab = null) {
     let v = has(/вдвое|в два раза|удвои/) ? 1 : has(/втрое|в три раза|утрои/) ? 2 : pct != null ? pct / 100 : 0.4 * strong;
     effects.push({ kind: 'oil', value: down ? -Math.min(v, 0.7) : v }); dur = dur || 12; title = `Нефть ${down ? '−' : '+'}${Math.round(Math.min(v, down ? 0.7 : 9) * 100)}%`;
   });
-  if (has(/(война|вторжен|вторга|нападе|нападает|атак|удар|воюет|воевать|обстрел|захват)/) && !has(/торгов[а-я]* войн|гражданск[а-я]* войн/)) R('война', () => {
-    if (A && B && A !== B) { effects.push({ kind: 'war', a: A.sel, b: B.sel }); dur = duration ?? 0; title = 'Война'; }
+  const WAR = /(?<![а-я])(война|войну|войной|вторжен|вторга|напад|атак|удар|воюет|воевать|обстрел|захват)/;
+  if (has(WAR) && !has(/торгов[а-я]* войн|гражданск[а-я]* войн/)) R('война', () => {
+    // кто до глагола — нападающие, кто после — цель («Россия с помощью Ирана нападает на Украину»)
+    const kw = evText.search(WAR), before = sorted.filter(e => e.pos < kw), after = sorted.filter(e => e.pos > kw);
+    const [wa, wb] = proPos < 0 && before.length && after.length ? [group(before), group(after)] : [A, B];
+    if (wa && wb && wa !== wb) { effects.push({ kind: 'war', a: wa.sel, b: wb.sel }); dur = duration ?? 0; title = 'Война'; }
     else notes.push('Для войны нужны две стороны (например «Россия нападает на Украину»).');
   });
   if (has(/санкци|эмбарго|изоляц/)) R('санкции', () => {
@@ -120,6 +133,7 @@ function parseOne(textRaw, world, lab = null) {
   });
   const T1 = targetOf(one);
   const shockEvent = (re, name, ttl, eff, d) => { if (has(re)) R(name, () => { eff(); dur = dur || d; title ??= ttl; }); };
+  const dir = has(/(?<![а-я])(сниз|сниж|пад|упад|уменьш|замедл|сократ|спад)/) ? -1 : 1;
   const gro = (dflt) => pct != null ? Math.min(pct, 25) : dflt * strong;
   shockEvent(/землетряс|цунами|ураган|наводнен|лесн[а-я]* пожар|стихийн|извержен|катастроф/, 'стихийное бедствие', 'Стихийное бедствие', () => {
     effects.push(sh(T1, 'growth', -gro(4)), sh(T1, 'level', -1.5 * strong), sh(T1, 'stab', -0.03 * strong), sh(T1, 'fiscal', 1.5));
@@ -138,8 +152,8 @@ function parseOne(textRaw, world, lab = null) {
   }, 12);
   shockEvent(/теракт|кибератак|взлом|диверси|саботаж/, 'теракт/кибератака', 'Теракт / кибератака', () => { effects.push(sh(T1, 'growth', -gro(1.2)), sh(T1, 'stab', -0.05 * strong), sh(T1, 'sent', -0.05)); }, 3);
   shockEvent(/забастовк/, 'забастовка', 'Забастовка', () => { effects.push(sh(T1, 'growth', -gro(1.5)), sh(T1, 'infl', 1)); }, 3);
-  shockEvent(/гиперинфляц|инфляц|рост цен/, 'инфляция', 'Инфляционный шок', () => { effects.push(sh(T1, 'infl', has(/гипер/) ? 15 : (pct ?? 4) * strong), sh(T1, 'sent', -0.05)); }, 12);
-  shockEvent(/безработиц/, 'безработица', 'Рост безработицы', () => { effects.push(sh(T1, 'unemp', (pct ?? 3) * strong)); }, 12);
+  shockEvent(/гиперинфляц|инфляц|рост цен/, 'инфляция', dir < 0 ? 'Снижение инфляции' : 'Инфляционный шок', () => { effects.push(sh(T1, 'infl', has(/гипер/) ? 15 : dir * (pct ?? 4) * strong), sh(T1, 'sent', -0.05 * dir)); }, 12);
+  shockEvent(/безработиц/, 'безработица', dir < 0 ? 'Снижение безработицы' : 'Рост безработицы', () => { effects.push(sh(T1, 'unemp', dir * (pct ?? 3) * strong)); }, 12);
   shockEvent(/военн[а-я]* (расход|бюджет)|вооруж|милитариз|перевооруж/, 'рост армии', 'Милитаризация', () => { effects.push(sh(T1, 'mil', (pct ?? 2) * strong)); }, 36);
   shockEvent(/бум(?![а-я])|подъем|подъём|прорыв|технологическ|искусственн[а-я]* интеллект|стимулир|стимул|реформ|инвестицион[а-я]* (бум|приток)/, 'подъём', 'Экономический подъём', () => {
     effects.push(sh(T1, 'growth', gro(3)), sh(T1, 'level', 2 * strong), sh(T1, 'sent', 0.1), sh(T1, 'stab', 0.03));
@@ -148,10 +162,10 @@ function parseOne(textRaw, world, lab = null) {
     const rec = B || one; if (!rec) return;
     effects.push(sh(rec.sel, 'growth', gro(1.5)), sh(rec.sel, 'stab', 0.03)); if (A && B) effects.push({ kind: 'relation', a: A.sel, b: B.sel, value: 0.3 });
   }, 12);
-  if (has(/(союз|сближен|примирен|перемири|дружб|мирн[а-я]* договор|нормализац|альянс)/)) R('сближение', () => {
+  if (has(/(?<![а-я])(союз|сближен|примирен|перемири|дружб|мирн[а-я]* договор|нормализац|альянс)/)) R('сближение', () => {
     if (A && B) { effects.push({ kind: 'relation', a: A.sel, b: B.sel, value: +(0.5 * strong).toFixed(2) }); dur = dur || 1; title ??= 'Сближение'; } else notes.push('Сближение: нужны две стороны.');
   });
-  if (has(/(ссор|конфликт|напряжен|разрыв|враждеб|эскалац|дипломатическ[а-я]* (скандал|кризис))/) && !has(/война|вторжен|нападе/)) R('ухудшение отношений', () => {
+  if (has(/(?<![а-я])(ссор|конфликт|напряжен|разрыв|враждеб|эскалац|дипломатическ[а-я]* (скандал|кризис))/) && !has(/(?<![а-я])(война|вторжен|напад|атак)/)) R('ухудшение отношений', () => {
     if (A && B) { effects.push({ kind: 'relation', a: A.sel, b: B.sel, value: -0.5 * strong }); dur = dur || 1; title ??= 'Обострение'; } else notes.push('Обострение: нужны две стороны.');
   });
 

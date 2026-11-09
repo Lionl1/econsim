@@ -55,7 +55,9 @@ Cyclical growth `gc` follows a target:
 target = gpot + fiscalMult·f + equityGrowth + 2·crypto·BTC12m + 0.1·Δmil − 0.25·tight
        + 0.35·openness·(partners' growth − partners' potential)      demand spillover, export weights
        − 1.8·(oil − 1)·energyImportShare + m.g + cycAmp·cyc·openness
-       + noise·gNoise·vol·ε,   vol = clamp((GDP/$100bn)^(−volSize), 0.3, 2.5) · (volLIC | 1 | volHIC)   larger economies swing less
+       + noise·vol·(gNoise·ε + gPersNoise·x) − c,   vol = clamp((GDP/$100bn)^(−volSize), 0.3, 2.5) · (volLIC | 1 | volHIC)   larger economies swing less
+x = gPers·x + √(1 − gPers²)·ε'          persistent country shock: growth spells last more than a year (annual AR(1) ≈ 0.3)
+c = (noise·vol·gPersNoise)²·(1 + gPers) / (2400·(1 − gPers))     half the log-level variance added per month: keeps E[GDP level] on the no-shock path
 gc += gAdj · (target − gc)
 gdp *= 1 + gc/1200 + dLevel/100          reported growth g = gc + 12·dLevel
 ```
@@ -68,7 +70,7 @@ core target  inflT = anchor + 0.25·(gc − gpot) + 0.35·f + (1 − headlineSha
 core        inflCore += inflAdj · (inflT − inflCore)
 headline    hl += 0.3 · (headlineShare·priceShock − hl)          most of a price shock hits CPI at once and fades with it
 noise       n = (1 − inflAdj)·n + noise·inflNoise·ε                 AR(1), same persistence as the core
-            inflNoisy = (inflCore + inflShift) · exp(n − Var(n)/2) − inflShift     multiplicative, centered: right-skewed, rare shallow deflation
+            inflNoisy = (inflCore + inflShift) · exp(k·n − k²·Var(n)/2) − inflShift     multiplicative, centered: right-skewed, rare shallow deflation; k = inflVolLIC for low income, else 1
 one-offs    tariffs:  tarPL → tariffPass · imports% · tauImp;  FX: fxPL → pass · q · 100
             inflPL = (tarPL − slow tarPL) + (fxPL − slow fxPL)      price-level jumps stay in annual inflation ~1 year
 inflation   infl = clamp(inflNoisy + inflPL + hl, −3, 300)
@@ -85,7 +87,7 @@ tight = r − (rrN + inflCore)          real policy rate minus neutral (>0 = res
 ## Labor, debt, stability
 
 ```
-unemp += −okun·(gc − gpot)/12 + 0.08·(uN + m.unemp − unemp) + noise·uNoise·ε        Okun's law + own shocks
+unemp += −(okunHIC | okun)·(gc − gpot)/12 + 0.08·(uN + m.unemp − unemp) + noise·uNoise·ε        Okun's law + own shocks
 deficit = deficit0 + f + Δmil + debt/100 · max(−3, r − r0)
 debt += (deficit − debt·(g + infl)/100) / 12
 default if debt > 120 + 60·govEffectiveness and r − r0 > 2, with probability 1%·debt/150 per month
@@ -182,13 +184,13 @@ Relations drift 4%/month toward `base + trade ties + 0.4·peace − 0.9·war −
 
 | Parameter | Value | Ensemble range | Source |
 |---|---|---|---|
-| `gNoise`, `volSize`, `volLIC/HIC`, `cycNoise`, `cycAmp`, `cycPers`, `gAdj` | 7, 0.13, 1.5/1.2, 3.3, 0.6, 0.8, 0.5 | — | calibrated to calm years: country, largest-10 and world growth sd, co-movement; size effect as in Canning et al. (1998) |
-| `inflNoise`, `inflAdj`, `inflShift` | 0.17, 0.07, 3 | — | calibrated: inflation sd, persistence, skew |
-| `uNoise` | 0.2 | — | calibrated: sd of annual unemployment changes |
+| `gNoise`, `gPersNoise`, `gPers`, `volSize`, `volLIC/HIC`, `cycNoise`, `cycAmp`, `cycPers`, `gAdj` | 4.3, 2.1, 0.96, 0.13, 1.5/1.2, 3.3, 0.6, 0.8, 0.5 | — | calibrated to calm years: country, largest-10 and world growth sd, persistence, co-movement; size effect as in Canning et al. (1998) |
+| `inflNoise`, `inflAdj`, `inflShift`, `inflVolLIC` | 0.2, 0.07, 1, 1.6 | — | calibrated: inflation sd (high and low income), persistence, skew (minimum inflation) |
+| `uNoise` | 0.33 | — | calibrated: sd of annual unemployment changes |
 | `headlineShare` | 0.7 | — | energy/food weight in CPI pass-through; fits 2008 and 2022 peaks in the calendar |
 | `anchorTrack`, `inflLead` | 0.25, 10 | — | inflation follows the IMF path without lagging it |
 | `convergence`, `targetHIC`, `targetEM`, `anchorDriftMonths` | 2, 2, 3.5, 36 | — | historical starts: β-convergence (~2%/yr, Barro & Sala-i-Martin) and the spread of inflation targeting |
-| `okun` | 0.32 | 0.25–0.4 | calibrated to unemployment changes |
+| `okunHIC`, `okun` | 0.35, 0.1 | — | Ball, Leigh & Loungani (2017): ~0.4 in advanced economies, weak where informal work absorbs downturns; fits the cross-country slope and the US in 2008 |
 | `oilInfl` | 10 | 6–14 | sized to the 2022 energy shock |
 | `fiscalMult` | 0.5 | 0.3–0.8 | Ramey (2019), lower in EMs |
 | `tradeElast` | 3 | 2–5 | Head & Mayer (2014); Boehm et al. (2023) |
@@ -209,17 +211,19 @@ Relations drift 4%/month toward `base + trade ties + 0.4·peace − 0.9·war −
 
 | Check | Command | Result |
 |---|---|---|
-| Growth sd, co-movement, by income group, 10 largest, world (calm years 2000–2024 without 2001, 2008–10, 2020–21) | `npm run calibrate` | within ~±15% (world 0.67 vs 0.68, largest 1.36 vs 1.40); upper-middle income −18% |
-| Inflation, high income: median, sd | `npm run calibrate` | 2.0% vs 2.3%, 1.9 vs 2.0 |
-| Inflation, low income | `npm run calibrate` | lower and calmer than 2000–2024 (median 4.4% vs 6.8%) |
+| Growth sd, persistence, co-movement, by income group, 10 largest, world (calm years 2000–2024 without 2001, 2008–10, 2020–23) | `npm run calibrate` | within ~±15% (world 0.70 vs 0.71, largest 1.42 vs 1.36, AR(1) 0.32 vs 0.35); upper-middle income −19% |
+| Okun slope, sd of unemployment changes | `npm run calibrate` | −0.06 vs −0.07, 0.72 vs 0.71 |
+| Minimum annual inflation (median over countries) | `npm run calibrate` | 0.25% vs 0.26% |
+| Inflation, high income: median, sd | `npm run calibrate` | 2.1% vs 2.1%, 1.5 vs 1.4 |
+| Inflation, low income | `npm run calibrate` | sd 4.6 vs 4.5; median 3.8% vs 6.5%: the baseline follows the IMF forecast (median 5% from 2029), and the median of a right-skewed series sits below its mean |
 | FX volatility (floating currencies) | dev script | median annual σ ≈ data |
 | Stock index volatility, world market | dev script | ≈ data; world σ 0.15 (MSCI World ≈ 0.15) |
-| Pandemic preset, year-one world growth | `npm run backtest` | −4.1 pp (actual −5…−6); inflation peak +3.5 pp |
-| 2008-style crisis | `npm run backtest` | −3.7 pp (actual ~−5) |
-| Calendar from 2000, world growth | `npm run calendar` | corr 0.91, mean abs error 0.68 pp |
-| Calendar from 2000, world inflation (GDP-weighted CPI) | `npm run calendar` | corr 0.92, mean abs error 0.46 pp, bias −0.1 pp |
-| Calendar from 2000, spread of world growth in one history | `npm run calendar` | sd 1.80 vs 1.80 |
-| Noise bias: world growth with vs without random shocks, 20 years, 150 seeds | dev script | difference ≤ 0.03 pp/year |
+| Pandemic preset, year-one world growth | `npm run backtest` | −4.0 pp (actual −5…−6); inflation peak +3.5 pp; US unemployment +3.1 pp (actual +4…+5) |
+| 2008-style crisis | `npm run backtest` | −3.7 pp (actual ~−5); US unemployment +5.7 pp (actual +5) |
+| Calendar from 2000, world growth | `npm run calendar` | corr 0.91, mean abs error 0.65 pp |
+| Calendar from 2000, world inflation (GDP-weighted CPI) | `npm run calendar` | corr 0.91, mean abs error 0.46 pp, bias 0.0 pp |
+| Calendar from 2000, spread of world growth in one history | `npm run calendar` | sd 1.83 vs 1.80 |
+| Noise bias: world growth with vs without random shocks, 20 years, 200 seeds | dev script | +0.02 ± 0.01 pp/year on average; up to +0.1 pp in 2041–45 (composition: economies in good spells gain weight in world GDP, as in reality) |
 | Baseline 2026–2031 vs IMF (market weights), 200 seeds | dev script | growth within ±2 standard errors each year (mean −0.02 pp); inflation 2031 2.8% vs 2.6% |
 | Same without random shocks (`noise: 0`), 30 seeds | dev script | 2.52 → 2.47% vs IMF 2.52 → 2.37% |
 
@@ -227,9 +231,8 @@ Relations drift 4%/month toward `base + trade ties + 0.4·peace − 0.9·war −
 
 - Effect sizes of events and many agent rules are assumptions sized to the order of magnitude of real episodes, not estimates.
 - No input–output structure: trade is total goods (services scaled), sectors exist only on the stock market.
-- Okun slope steeper than the median country estimate (−0.15 vs −0.09; the empirical one is attenuated by measurement error).
-- Inflation in emerging and low-income economies is calmer than in 2000–2024; the 2009 recession and the 2022 slowdown are milder than in reality in the calendar (−0.4% vs −1.3%, 1.9% vs 3.4%).
-- Growth persistence (AR(1) of annual growth) is lower than in the data.
+- Median inflation in low-income economies is lower than in 2000–2024 (the baseline follows today's IMF forecasts); the 2009 recession and the 2022 slowdown are milder than in reality in the calendar (−0.2% vs −1.3%, 1.9% vs 3.4%).
+- Average growth is ~17% below 2000–2024 (the baseline follows the IMF forecast, not history).
 - With random shocks switched off the path is the expected one, but agent decisions (wars, elections) stay random, so a single run can still contain a war that moves everything.
 - Exchange rate regimes are simplified; crypto adoption is a proxy.
 - Historical starts reuse today's trade matrix, governance, blocs and company list.

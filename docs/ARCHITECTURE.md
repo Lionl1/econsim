@@ -158,7 +158,7 @@ Slot ranges (keep new draws out of them):
 
 | Range | Used by |
 |---|---|
-| `rnd(i, 1..3)`, `gs(i, 1..2, 4)` | growth, inflation and unemployment noise, default |
+| `rnd(i, 1..3)`, `gs(i, 1..2, 4..5)` | growth (iid and persistent), inflation and unemployment noise, default |
 | `rnd(i, 10..61)` | government decisions (tariffs, sanctions, aid, war) |
 | `rnd(i, 77..79)`, `gauss(i, t, 80..83)` | elections, coups, government change |
 | citizens: id `1 000 000 + i·1000 + k`, slots 70–76, 84 | labor market, sentiment, protests, emigration |

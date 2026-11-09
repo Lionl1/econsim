@@ -1,0 +1,15 @@
+[
+ {"name":"World Bank Open Data (WDI + WGI)","url":"https://data.worldbank.org","used":true,"what":"ВВП, население, инфляция, безработица, долг, торговля, военные расходы, Gini, индикаторы управления (демократичность, стабильность, коррупция). Загружается скриптом scripts/fetch_data.py через API."},
+ {"name":"Natural Earth / world-atlas","url":"https://www.naturalearthdata.com","used":true,"what":"Полигоны границ стран для глобуса."},
+ {"name":"mledoze/countries (world-countries)","url":"https://github.com/mledoze/countries","used":true,"what":"Список 194 независимых стран, ISO-коды, координаты, границы, русские названия."},
+ {"name":"Wikipedia / Wikidata","url":"https://www.wikidata.org","used":false,"what":"Блоки и союзы (НАТО, ЕС, БРИКС, АСЕАН, ШОС, ОПЕК), ядерные державы, соперничества — зашиты вручную в src/sim/blocs.js по данным Wikipedia."},
+ {"name":"IMF World Economic Outlook / DataMapper","url":"https://www.imf.org/en/Publications/WEO","used":false,"what":"Прогнозы роста, инфляции, долга на 5 лет вперёд — следующий шаг для калибровки."},
+ {"name":"UN Comtrade / WITS","url":"https://comtrade.un.org","used":false,"what":"Реальные двусторонние торговые потоки. Сейчас заменены гравитационной моделью."},
+ {"name":"CIA World Factbook","url":"https://www.cia.gov/the-world-factbook/","used":false,"what":"Структура экономики, ресурсы, режимы, спорные территории."},
+ {"name":"SIPRI Military Expenditure","url":"https://www.sipri.org/databases/milex","used":false,"what":"Военные расходы и вооружения (сейчас берётся из World Bank/SIPRI)."},
+ {"name":"UCDP / ACLED","url":"https://ucdp.uu.se","used":false,"what":"Данные о вооружённых конфликтах — для калибровки модели войн."},
+ {"name":"V-Dem / Freedom House","url":"https://www.v-dem.net","used":false,"what":"Тип политического режима — точнее, чем прокси из WGI."},
+ {"name":"Our World in Data","url":"https://ourworldindata.org","used":false,"what":"Энергия, выбросы CO2, здоровье, демография."},
+ {"name":"OECD / Eurostat / FAO / IEA","url":"https://data.oecd.org","used":false,"what":"Детальные данные по развитым странам, продовольствию и энергетике."},
+ {"name":"Penn World Table","url":"https://www.rug.nl/ggdc/productivity/pwt/","used":false,"what":"Производительность и капитал для долгосрочных моделей роста."}
+]

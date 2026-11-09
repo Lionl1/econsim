@@ -29,12 +29,15 @@ const wld = history._WLD.growth, imf = world.worldForecast;
 const wInfl = yr => { let w = 0, v = 0; for (const [iso, h] of Object.entries(history)) { const g = h.gdp?.[yr], i = h.infl?.[yr]; if (iso[0] !== '_' && g && i != null && Math.abs(i) < 100) { w += g; v += g * i; } } return w ? v / w : null; };
 console.log(`start ${startYear}, ${SEEDS} seeds, removed: ${[...removed].join(', ')}`);
 console.log('year   actual  model(as was)  model(without)  effect   infl: actual(GDP-w) model   events');
-let err = [];
+let err = [], ierr = [], IA = [], IM = [];
 for (let y = 0; y < years; y++) {
   const yr = startYear + y, a = med(A.map(r => r[y])), b = med(B.map(r => r[y])), f = wld[yr] ?? imf[yr];
   if (wld[yr] != null) err.push(a - wld[yr]);
+  const im = med(AI.map(r => r[y])), ia = wInfl(yr); if (ia != null && yr <= 2024) { ierr.push(im - ia); IA.push(ia); IM.push(im); }
   const names = evs.filter(e => +e.date.slice(0, 4) === yr).map(e => e.id).join(' ');
   console.log(String(yr).padEnd(6), (f != null ? f.toFixed(1) + (wld[yr] == null ? 'f' : ' ') : '  —').padStart(6), a.toFixed(1).padStart(10), b.toFixed(1).padStart(14), (a - b).toFixed(1).padStart(10), (wInfl(yr) != null ? wInfl(yr).toFixed(1) : '—').padStart(12), med(AI.map(r => r[y])).toFixed(1).padStart(6), '  ', names);
 }
 const mean = x => x.reduce((p, q) => p + q, 0) / x.length;
 console.log(`model - actual: mean ${mean(err).toFixed(2)} pp, mean abs ${mean(err.map(Math.abs)).toFixed(2)} pp, corr ${(() => { const a = [], b = []; for (let y = 0; y < years; y++) { const yr = startYear + y; if (wld[yr] != null) { a.push(med(A.map(r => r[y]))); b.push(wld[yr]); } } const ma = mean(a), mb = mean(b); let n = 0, da = 0, db = 0; for (let k = 0; k < a.length; k++) { n += (a[k] - ma) * (b[k] - mb); da += (a[k] - ma) ** 2; db += (b[k] - mb) ** 2; } return (n / Math.sqrt(da * db)).toFixed(2); })()}`);
+const corr = (a, b) => { const ma = mean(a), mb = mean(b); let n = 0, da = 0, db = 0; for (let k = 0; k < a.length; k++) { n += (a[k] - ma) * (b[k] - mb); da += (a[k] - ma) ** 2; db += (b[k] - mb) ** 2; } return n / Math.sqrt(da * db); };
+console.log(`inflation (GDP-weighted country CPI): model - actual: mean ${mean(ierr).toFixed(2)} pp, mean abs ${mean(ierr.map(Math.abs)).toFixed(2)} pp, corr ${corr(IM, IA).toFixed(2)}`);

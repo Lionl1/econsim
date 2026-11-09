@@ -56,7 +56,7 @@ All files live in `public/data/` and come from open sources (`public/data/source
 | File | Contents | Sources |
 |---|---|---|
 | `countries.json` | 194 sovereign states + Taiwan, Palestine, Kosovo; macro, governance, demographics; gaps filled with regional medians (`imputed`) | World Bank WDI + WGI, world-countries |
-| `trade.json` | exports by partner (goods, HS TOTAL, 2023/2022), importer-reported with exporter mirror fallback | UN Comtrade |
+| `trade.json` | exports by partner (goods, HS TOTAL, 2023/2022), importer-reported with exporter mirror fallback; pairs reported by neither side get a gravity estimate. The current snapshot has 122 import and 121 export reporters: the public API started refusing requests before the US, UK, Vietnam and a few others were fetched — `npm run trade` resumes where it stopped | UN Comtrade |
 | `markets.json` | currencies and regimes, current rates, FX volatility, IMF WEO 2026–2031 forecasts, BTC/ETH, market caps and index volatility, 63 companies | open.er-api.com, World Bank, IMF DataMapper, CoinGecko, Wikidata |
 | `world-50m.json` | borders | Natural Earth via world-atlas |
 

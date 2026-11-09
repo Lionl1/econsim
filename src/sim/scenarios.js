@@ -4,6 +4,7 @@
 //   shock    {targets, var: growth|infl|unemp|stab|sent|mil|fiscal|level|pop|debt, value, scale?: urban|openness|internet}
 //   oil      {value}   — oil price add-on (1.0 = +100%)
 //   tariff   {from, to, value}   — tariff, %
+//   (shock and oil effects may carry {at, len}: active from month `at` of the scenario for `len` months)
 //   sanction {from, to}
 //   war      {a, b}
 //   relation {a, b, value}

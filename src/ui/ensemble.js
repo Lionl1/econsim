@@ -15,6 +15,10 @@ export function initEnsemble(app) {
     <div class="form ens-opts"><div class="r2">
       <div><label>Прогонов</label><select id="ens-seeds"><option>10</option><option selected>20</option><option>40</option></select></div>
       <div><label>Горизонт, мес.</label><select id="ens-months"><option>36</option><option selected>60</option><option>120</option></select></div></div>
+      <div><label>Источники неопределённости</label><div class="toggles">
+        <label><input type="checkbox" checked disabled> случайные события</label>
+        <label><input type="checkbox" id="ens-par" checked> параметры модели</label>
+        <label><input type="checkbox" id="ens-mag" checked> величина события</label></div></div>
       <button id="ens-rerun">Пересчитать</button></div>
     <div class="bar" id="ens-bar"><i style="width:0%"></i></div>
     <div id="ens-body"></div>
@@ -32,7 +36,8 @@ export function initEnsemble(app) {
     current = req;
     const seeds = +$('#ens-seeds').value, months = +$('#ens-months').value;
     $('#ens-title').textContent = 'Оценка: ' + req.title;
-    $('#ens-sub').textContent = `Сценарий против базового мира на ${seeds} прогонах с разными случайными событиями, ${months} мес. от стартового мира 2026 г. Жирное — медиана, в скобках — 10…90% прогонов.`;
+    $('#ens-sub').textContent = `Сценарий против базового мира на ${seeds} вариантах будущего, ${months} мес. от стартового мира 2026 г. В каждом варианте свои случайные события`
+      + ($('#ens-par').checked ? ', свои значения параметров модели (в диапазонах оценок из литературы)' : '') + ($('#ens-mag').checked ? ' и своя сила события (±35%)' : '') + '. Жирное — медиана, в скобках — 10…90% вариантов.';
     $('#ens-body').innerHTML = '<div class="hint" style="padding:12px 0">Считаю…</div>';
     $('#ens-bar i').style.width = '0%';
     worker?.terminate();
@@ -44,7 +49,8 @@ export function initEnsemble(app) {
       if (data.error) $('#ens-body').innerHTML = `<pre class="hint">${esc(data.error)}</pre>`;
       if (data.result) { render(data.result); worker.terminate(); worker = null; }
     };
-    worker.postMessage({ id, raw: app.raw, scenarios: req.scenarios, seeds, months });
+    worker.postMessage({ id, raw: app.raw, trade: app.trade, markets: app.markets, scenarios: req.scenarios, seeds, months,
+      params: $('#ens-par').checked, magnitude: $('#ens-mag').checked });
   };
 
   const render = r => {
@@ -58,11 +64,16 @@ export function initEnsemble(app) {
         <div class="row"><span>ВВП мира, худшая точка</span><span>${rng(r.peak.gdp, '%')}</span></div>
         <div class="row"><span>Инфляция мира, пик</span><span>${rng(r.peak.infl, ' п.п.')}</span></div>
         <div class="row"><span>Безработица, пик</span><span>${rng(r.peak.unemp, ' п.п.')}</span></div>
+        <div class="row"><span>Мировой фондовый рынок</span><span>${rng(r.end.eq, '%')}</span></div>
+        <div class="row"><span>Мировая торговля</span><span>${rng(r.end.trade, '%')}</span></div>
+        <div class="row"><span>Биткоин</span><span>${rng(r.end.btc, '%')}</span></div>
         <div class="row"><span>Новые войны (кроме заданных сценарием)</span><span><b>${f(r.wars.newWarsMedian, 0)}</b> <span class="hint">больше, чем в базе, в ${Math.round(r.wars.pMore * 100)}% прогонов</span></span></div>
         <div class="d" style="margin:6px 0 0">Эффект на ВВП мира ${robust} (хуже базы в ${Math.round(r.end.gdp.neg * 100)}% прогонов).</div>
       </div>
       <h3>ВВП мира к базе, % (медиана и 10–90%)</h3><canvas id="ens-c1"></canvas>
       <h3>Инфляция и безработица к базе, п.п.</h3><canvas id="ens-c2"></canvas>
+      <h3>Базовый прогноз роста мира: модель и IMF WEO</h3><canvas id="ens-c3"></canvas>
+      <div class="hint">Коридор — 10…90% вариантов базового мира без сценария, точки — прогноз IMF (рыночные веса). Ширина коридора сопоставима с историческими ошибками прогнозов IMF (~1–1.5 п.п. на год вперёд).</div>
       <h3>${big[0].p50 < 0 ? 'Больше всех теряют' : 'Меньше всех выигрывают'} <span class="hint">(медиана, разброс, доля прогонов с таким знаком)</span></h3>${big.slice(0, 6).map(row).join('')}
       <h3>${big[big.length - 1].p50 > 0 ? 'Больше всех выигрывают' : 'Меньше всех теряют'}</h3>${big.slice(-5).reverse().map(row).join('')}`;
     const b = r.bands;
@@ -71,6 +82,11 @@ export function initEnsemble(app) {
       { data: b.infl.p50, lo: b.infl.p10, hi: b.infl.p90, color: '#f5a524', label: 'инфляция' },
       { data: b.unemp.p50, lo: b.unemp.p10, hi: b.unemp.p90, color: '#ff7a90', label: 'безработица' },
     ], { height: 110, zeroLine: true, fmt: v => v.toFixed(1) });
+    const bl = r.baseline;
+    lineChart($('#ens-c3'), [
+      { data: bl.growth.p50, lo: bl.growth.p10, hi: bl.growth.p90, color: '#2fd3a7', label: 'модель' },
+      { data: bl.imf.map(v => v ?? NaN), color: '#ffb547', label: 'IMF', dash: [3, 3] },
+    ], { height: 100, zeroLine: true, fmt: v => v.toFixed(1) + '%' });
   };
 
   // req: { title, scenarios: [{ def, delay }] }

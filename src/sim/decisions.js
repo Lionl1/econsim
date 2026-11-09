@@ -40,7 +40,7 @@ export function decide(sim, i) {
     if (theirs > mine + 4 && sim.rnd(i, 10 + (j % 7), t) < 0.5 + 0.4 * s.protect) {
       sim.T[k] = Math.min(80, mine + Math.max(5, (theirs - mine) * 0.6));
       if (sim.T[k] - mine >= 10) sim.log('tariff', `🛃 Ответные пошлины ${sim.T[k].toFixed(0)}%: ${c.nameRu} → ${W.countries[j].nameRu}`, [i, j], 2);
-    } else if (rel < 0.05 && s.protect > 0.65 && s.unemp > s.unemp0 + 1.5 && mine < 30 && sim.rnd(i, 20 + (j % 5), t) < 0.03 * W.share[k] * 30) {
+    } else if (!sim.isPeace(i, j) && rel < 0.05 && s.protect > 0.65 && s.unemp > s.unemp0 + 1.5 && mine < 30 && sim.rnd(i, 20 + (j % 5), t) < 0.03 * W.share[k] * 30) {
       sim.T[k] = mine + 10;
       sim.log('tariff', `🛃 Пошлины +10% (протекционизм): ${c.nameRu} → ${W.countries[j].nameRu}`, [i, j], 2);
     } else if (mine > 0 && rel > 0.3 && theirs <= mine) {
@@ -59,7 +59,7 @@ export function decide(sim, i) {
     for (const w of sim.wars) {
       const atk = w.primaryA, vic = w.primaryB;
       if (w.a.includes(i) || w.b.includes(i)) continue;
-      if (sim.San[i * N + atk] || W.allies[i].has(atk) || sim.R[i * N + atk] > 0.35) continue;
+      if (sim.San[i * N + atk] || W.allies[i].has(atk) || sim.R[i * N + atk] > 0.35 || sim.isPeace(i, atk)) continue;
       if (sim.R[i * N + vic] > 0.1 && sim.R[i * N + atk] < 0.2 && sim.rnd(i, 40 + (atk % 7), t) < 0.12 * (0.5 + s.coop)) {
         sim.San[i * N + atk] = 1; sim.log('sanction', `⛔ Санкции: ${c.nameRu} → ${W.countries[atk].nameRu}`, [i, atk], 3);
       }
@@ -89,7 +89,7 @@ export function decide(sim, i) {
   const P0 = sim.milPower(i);
   for (const j of W.partners[i].slice(0, 30)) {
     const k = i * N + j;
-    if (sim.R[k] > -0.5 || (sim.truce.get(k) ?? 0) > t || sim.warMat[k]) continue;
+    if (sim.R[k] > -0.5 || (sim.truce.get(k) ?? 0) > t || sim.warMat[k] || sim.isPeace(i, j)) continue;
     const near = W.border[k] || W.dist[k] < 3000;
     if (!near) continue;
     const d = W.countries[j];

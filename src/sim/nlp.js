@@ -24,6 +24,12 @@ const ALIASES = [
 const STRIP = /(ая|ое|ые|ий|ый|ой|ия|ея|я|а|ь|й|о|и|ы|е)$/;
 const ENDINGS = new Set(['', 'а', 'ы', 'е', 'у', 'и', 'ю', 'я', 'й', 'ой', 'ою', 'ей', 'ем', 'ом', 'ии', 'ию', 'ия', 'ией', 'ая', 'ую', 'ые', 'ых', 'ым', 'ыми', 'ого', 'ому', 'ий', 'ый', 'ое', 'ие', 'их', 'им', 'ами', 'ах', 'ам', 'ея', 'еи', 'ее', 'ею', 'еей']);
 const wordMatch = (tok, p) => tok === p.word || (p.base.length >= 3 && tok.startsWith(p.base) && ENDINGS.has(tok.slice(p.base.length)));
+// алиасы из нескольких слов (префиксы подряд идущих слов)
+const PHRASES = [
+  [['все', 'стран'], ['all']], [['всех', 'стран'], ['all']], [['весь', 'мир'], ['all']], [['всего', 'мир'], ['all']],
+  [['мировое', 'сообществ'], ['all']], [['оон'], ['all']], [['человечеств'], ['all']], [['планет'], ['all']], [['земл'], ['all'], true],
+];
+
 function countryIndex(world) {
   return world.countries.map(c => {
     const words = norm(c.nameRu).split(/[\s-]+/).filter(Boolean);
@@ -36,7 +42,7 @@ function countryIndex(world) {
 const STOP = new Set(['того']);
 // (?<![а-я]) — начало слова: \b в JS не работает с кириллицей
 
-const KW = /(?<![а-я])(война|вторжен|вторга|напад|атак|удар|воюет|обстрел|захват|санкци|эмбарго|изоляц|пошлин|тариф|торгов[а-я]* войн|нефт|землетряс|цунами|ураган|наводнен|стихийн|извержен|засух|неурожай|голод|пандеми|эпидеми|вирус|карантин|кризис|рецесси|крах|банкротств|пузыр|дефолт|переворот|революци|мятеж|восстани|беспорядк|протест|теракт|кибератак|взлом|забастовк|инфляц|безработиц|военн[а-я]* (расход|бюджет)|вооруж|милитариз|бум(?![а-я])|подъем|прорыв|технологическ|стимул|реформ|помощ|грант|союз|сближен|примирен|перемири|дружб|договор|альянс|ссор|конфликт|напряжен|разрыв|эскалац)/;
+const KW = /(?<![а-я])(война|вторжен|вторга|напад|атак|удар|воюет|обстрел|захват|санкци|эмбарго|изоляц|пошлин|тариф|торгов[а-я]* войн|нефт|землетряс|цунами|ураган|наводнен|стихийн|извержен|засух|неурожай|голод|пандеми|эпидеми|вирус|карантин|кризис|рецесси|крах|банкротств|пузыр|дефолт|переворот|революци|мятеж|восстани|беспорядк|протест|теракт|кибератак|взлом|забастовк|инфляц|безработиц|военн[а-я]* (расход|бюджет)|вооруж|милитариз|бум(?![а-я])|подъем|прорыв|технологическ|стимул|реформ|помощ|грант|союз|сближен|объедин|сотруднич|разоруж|примирен|перемири|дружб|договор|альянс|ссор|конфликт|напряжен|разрыв|эскалац)/;
 
 export function parseEvent(textRaw, world, lab = null) {
   // несколько событий в одной фразе: делим по запятым/«и»/«;», склеивая куски без ключевых слов с предыдущим
@@ -68,6 +74,10 @@ function parseOne(textRaw, world, lab = null) {
       if (c.parts.length > 1 && c.parts.every((p, q) => toks[k + q] && !toks[k + q].used && wordMatch(toks[k + q].w, p))) { take(k, c.parts.length, ['iso:' + c.iso], c.iso); hit = true; break; }
     }
     if (hit) continue;
+    for (const [ws, sel, exact] of PHRASES) {
+      if (ws.every((p, q) => toks[k + q] && !toks[k + q].used && (exact ? toks[k + q].w === 'земля' || toks[k + q].w === 'земли' : toks[k + q].w.startsWith(p)))) { take(k, ws.length, sel, ws.join(' ')); hit = true; break; }
+    }
+    if (hit) continue;
     for (const [pre, sel, exact] of ALIASES) {
       const w = toks[k].w;
       if (exact ? w === pre : w.startsWith(pre)) { take(k, 1, sel, pre); hit = true; break; }
@@ -76,7 +86,7 @@ function parseOne(textRaw, world, lab = null) {
     for (const c of idx) if (c.parts.length === 1 && !(STOP.has(toks[k].w) && !/^[А-ЯЁ]/.test(textRaw.slice(toks[k].pos, toks[k].pos + 1))) && wordMatch(toks[k].w, c.parts[0])) { take(k, 1, ['iso:' + c.iso], c.iso); hit = true; break; }
   }
   const sorted = ents.sort((a, b) => a.pos - b.pos);
-  const labels = sorted.map(e => (lab ? lab(e.sel) : e.label));
+  const labels = [...new Set(sorted.map(e => (lab ? lab(e.sel) : e.label)))];
   const proPos = (() => { const t = toks.find(t => t.w === 'против'); return t ? t.pos : -1; })();
   let A = null, B = null;
   const group = list => (list.length ? { pos: list[0].pos, sel: [...new Set(list.flatMap(e => e.sel))] } : null);
@@ -109,7 +119,7 @@ function parseOne(textRaw, world, lab = null) {
     effects.push({ kind: 'oil', value: down ? -Math.min(v, 0.7) : v }); dur = dur || 12; title = `Нефть ${down ? '−' : '+'}${Math.round(Math.min(v, down ? 0.7 : 9) * 100)}%`;
   });
   const WAR = /(?<![а-я])(война|войну|войной|вторжен|вторга|напад|атак|удар|воюет|воевать|обстрел|захват)/;
-  if (has(WAR) && !has(/торгов[а-я]* войн|гражданск[а-я]* войн/)) R('война', () => {
+  if (has(WAR) && !has(/торгов[а-я]* войн|гражданск[а-я]* войн|(прекращ|конец|конча|окончан|заверш|без|останов)[а-я]* войн/)) R('война', () => {
     // кто до глагола — нападающие, кто после — цель («Россия с помощью Ирана нападает на Украину»)
     const kw = evText.search(WAR), before = sorted.filter(e => e.pos < kw), after = sorted.filter(e => e.pos > kw);
     const [wa, wb] = proPos < 0 && before.length && after.length ? [group(before), group(after)] : [A, B];
@@ -162,7 +172,16 @@ function parseOne(textRaw, world, lab = null) {
     const rec = B || one; if (!rec) return;
     effects.push(sh(rec.sel, 'growth', gro(1.5)), sh(rec.sel, 'stab', 0.03)); if (A && B) effects.push({ kind: 'relation', a: A.sel, b: B.sel, value: 0.3 });
   }, 12);
-  if (has(/(?<![а-я])(союз|сближен|примирен|перемири|дружб|мирн[а-я]* договор|нормализац|альянс)/)) R('сближение', () => {
+  const PEACE = /(?<![а-я])(объедин|сотруднич|разоруж|мир во всем мире|всеобщ[а-я]* мир|мирн[а-я]* (договор|соглашен|процесс|урегулир)|прекращ[а-я]* (войн|огня|конфликт)|конец войн|без войн|решить[а-я]* (все )?(глобальн[а-я]* )?проблем|глобальн[а-я]* (договор|соглашен|сотрудн)|солидарн)/;
+  const peaceHere = has(PEACE) || (/(?<![а-я])мир(?![а-я])/.test(evText) && !sorted.some(e => e.label !== 'мир') && !has(WAR));
+  if (peaceHere) R('мир и сотрудничество', () => {
+    const grp = sorted.length ? { sel: [...new Set(sorted.flatMap(e => e.sel))] } : { sel: ['all'] };
+    const g = grp.sel.length === 1 && grp.sel[0].startsWith('iso:') && !(A && B) ? { sel: ['all'] } : grp;   // одна страна «объединилась» — со всеми
+    effects.push({ kind: 'peace', a: g.sel }, sh(g.sel, 'growth', gro(1)), sh(g.sel, 'stab', 0.06 * strong), sh(g.sel, 'sent', 0.08 * strong));
+    if (has(/разоруж|сократ[а-я]* (арми|вооруж|военн)/)) effects.push(sh(g.sel, 'mil', -1));
+    dur = dur || 60; title ??= g.sel.includes('all') ? 'Глобальный мир и сотрудничество' : 'Мирное соглашение';
+  });
+  if (!peaceHere && has(/(?<![а-я])(союз|сближен|примирен|перемири|дружб|мирн[а-я]* договор|нормализац|альянс)/)) R('сближение', () => {
     if (A && B) { effects.push({ kind: 'relation', a: A.sel, b: B.sel, value: +(0.5 * strong).toFixed(2) }); dur = dur || 1; title ??= 'Сближение'; } else notes.push('Сближение: нужны две стороны.');
   });
   if (has(/(?<![а-я])(ссор|конфликт|напряжен|разрыв|враждеб|эскалац|дипломатическ[а-я]* (скандал|кризис))/) && !has(/(?<![а-я])(война|вторжен|напад|атак)/)) R('ухудшение отношений', () => {

@@ -33,6 +33,7 @@ export function describeEffect(T, e) {
     case 'tariff': return `Пошлины ${e.value}%: ${T.label(e.from)} → ${T.label(e.to)}`;
     case 'sanction': return `Санкции: ${T.label(e.from)} → ${T.label(e.to)}`;
     case 'war': return `Война: ${T.label(e.a)} ⟷ ${T.label(e.b)}`;
+    case 'peace': return `Мирное соглашение: ${T.label(e.a)} (конец войн, снятие санкций и пошлин, запрет новых войн)`;
     case 'relation': return `Отношения ${e.value > 0 ? '+' : ''}${e.value}: ${T.label(e.a)} ↔ ${T.label(e.b)}`;
   }
   return esc(e.kind);

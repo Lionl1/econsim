@@ -7,6 +7,7 @@
 //   sanction {from, to}
 //   war      {a, b}
 //   relation {a, b, value}
+//   peace    {a}       — мир внутри группы: конец войн между участниками, снятие взаимных санкций/пошлин, запрет новых войн на срок
 const GULF = ['iso:IRN', 'iso:SAU', 'iso:ARE', 'iso:KWT', 'iso:QAT', 'iso:BHR', 'iso:OMN', 'iso:IRQ'];
 const FRAGILE = ['region:Africa', 'subregion:Southern Asia'];
 

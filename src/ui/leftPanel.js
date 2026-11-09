@@ -60,7 +60,7 @@ function initBuilder(app) {
       <div><label>Тип эффекта</label><select id="b-kind">
         <option value="shock">Шок (рост, инфляция, безработица…)</option><option value="oil">Цена нефти</option>
         <option value="tariff">Пошлины</option><option value="sanction">Санкции</option>
-        <option value="war">Война</option><option value="relation">Отношения стран</option></select></div>
+        <option value="war">Война</option><option value="relation">Отношения стран</option><option value="peace">Мирное соглашение</option></select></div>
       <div id="b-fields" class="form"></div>
       <button id="b-add">＋ Добавить в сценарий</button>
     </div>
@@ -79,6 +79,7 @@ function initBuilder(app) {
     tariff: () => `<div><label>Кто вводит</label>${sel('f-from', { selected: 'iso:USA' })}</div><div><label>Против кого</label>${sel('f-to', { selected: 'iso:CHN' })}</div><div><label>Пошлина, %</label><input id="f-value" type="number" value="40"></div>`,
     sanction: () => `<div><label>Кто вводит</label>${sel('f-from', { selected: 'bloc:NATO' })}</div><div><label>Против кого</label>${sel('f-to', { selected: 'iso:RUS' })}</div>`,
     war: () => `<div><label>Сторона A (агрессор)</label>${sel('f-a', { selected: 'iso:RUS' })}</div><div><label>Сторона B</label>${sel('f-b', { selected: 'iso:UKR' })}</div>`,
+    peace: () => `<div><label>Участники (между ними — мир, без санкций и пошлин)</label>${sel('f-a', { selected: 'all' })}</div>`,
     relation: () => `<div><label>Страны/группа A</label>${sel('f-a', { selected: 'bloc:NATO' })}</div><div><label>Страны/группа B</label>${sel('f-b', { selected: 'bloc:BRICS' })}</div><div><label>Изменение отношений (−1…+1)</label><input id="f-value" type="number" step="0.1" value="-0.3"></div>`,
   };
   const renderFields = () => { $('#b-fields').innerHTML = FIELDS[$('#b-kind').value](); };
@@ -103,6 +104,7 @@ function initBuilder(app) {
     if (k === 'tariff') Object.assign(e, { from: [v('f-from')], to: [v('f-to')], value: n('f-value') });
     if (k === 'sanction') Object.assign(e, { from: [v('f-from')], to: [v('f-to')] });
     if (k === 'war') Object.assign(e, { a: [v('f-a')], b: [v('f-b')] });
+    if (k === 'peace') e.a = [v('f-a')];
     if (k === 'relation') Object.assign(e, { a: [v('f-a')], b: [v('f-b')], value: n('f-value') });
     if (e.value !== undefined && Number.isNaN(e.value)) return app.toast('Введите число');
     draft.effects.push(e); renderList();

@@ -26,7 +26,7 @@ export class Sim {
     this.warMat = new Uint8Array(N * N);       // 1 — страны воюют друг против друга
     this.R = Float32Array.from(W.base);        // динамические отношения
     this.aid = new Float32Array(N * N);        // «память» о помощи, затухает
-    this.wars = []; this.truce = new Map();
+    this.wars = []; this.truce = new Map(); this.peace = [];
     // пошлины/санкции, заданные сценариями: k -> { base, claims: Map(scId -> значение) }; пока есть claims, агенты их не трогают
     this.lockedSan = new Map(); this.lockedT = new Map();
     this.events = []; this.eventSeq = 0;
@@ -129,6 +129,18 @@ export class Sim {
           if (a === b) continue;
           this.R[a * N + b] = this.R[b * N + a] = clamp(this.R[a * N + b] + e.value, -1, 1);
         }
+      } else if (e.kind === 'peace') {
+        // мирное соглашение внутри группы: войны между участниками заканчиваются, взаимные санкции и пошлины
+        // (не заданные другими сценариями) снимаются; пока сценарий идёт, участники не воюют друг с другом
+        const set = new Set(this.targets(e, 'a'));
+        for (const w of [...this.wars]) if (w.a.some(i => set.has(i)) && w.b.some(i => set.has(i))) this.endWar(w, 'мирное соглашение');
+        for (const a of set) for (const b of set) {
+          if (a === b) continue;
+          const k = a * N + b;
+          if (!this.lockedSan.has(k)) this.San[k] = 0;
+          if (!this.lockedT.has(k)) this.T[k] = 0;
+          this.R[k] = clamp(this.R[k] + 0.3, -1, 1);
+        }
       }
     }
   }
@@ -160,6 +172,7 @@ export class Sim {
   applyScenarios() {
     for (const s of this.S) s.mods = this.blankMods(), s.pulse = 0;
     this.oilShock = 0;
+    this.peace = [];   // группы стран под действующим мирным соглашением (заполняется ниже)
     for (const sc of this.scenarios) {
       // duration 0 = бессрочно: шоки действуют до отмены, разовые величины (level/pop/debt) применяются за 1 месяц
       const t0 = sc.start, dur = Math.max(sc.duration, 1), t1 = sc.duration > 0 ? t0 + dur : Infinity;
@@ -191,8 +204,11 @@ export class Sim {
         }
       }
       if (this.t >= t1 && sc.started && !sc.ended && sc.duration > 0) this.endScenario(sc);
+      if (sc.started && !sc.ended) for (const e of sc.effects) if (e.kind === 'peace') this.peace.push(new Set(this.targets(e, 'a')));
     }
   }
+
+  isPeace(i, j) { return this.peace.length > 0 && this.peace.some(S => S.has(i) && S.has(j)); }
 
   // ---------- войны ----------
   milPower(i) {
@@ -365,7 +381,7 @@ export class Sim {
     for (let i = 0; i < N; i++) for (let j = i + 1; j < N; j++) {
       const k = i * N + j;
       const ties = Math.min(0.3, W.share[k] * 3 + W.share[j * N + i] * 3);
-      const tar = W.base[k] + ties - 0.9 * this.warMat[k] - 0.35 * (this.San[k] | this.San[j * N + i]) - 0.004 * (this.T[k] + this.T[j * N + i]) + this.aid[k] + this.aid[j * N + i];
+      const tar = W.base[k] + ties + (this.isPeace(i, j) ? 0.4 : 0) - 0.9 * this.warMat[k] - 0.35 * (this.San[k] | this.San[j * N + i]) - 0.004 * (this.T[k] + this.T[j * N + i]) + this.aid[k] + this.aid[j * N + i];
       const v = clamp(this.R[k] + 0.04 * (clamp(tar, -1, 1) - this.R[k]), -1, 1);
       this.R[k] = this.R[j * N + i] = v;
       this.aid[k] *= 0.95; this.aid[j * N + i] *= 0.95;

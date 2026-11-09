@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Country & economy simulator on a 3D globe: 197 countries, government/citizen/corporate agents, real trade, currencies, stock markets, crypto, scenarios and ensemble uncertainty.",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "repository": {
     "type": "git",

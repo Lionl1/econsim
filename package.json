@@ -1,10 +1,24 @@
 {
   "name": "econsim",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Country & economy simulator on a 3D globe: 197 countries, government/citizen/corporate agents, real trade, currencies, stock markets, crypto, scenarios and ensemble uncertainty.",
+  "private": true,
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Lionl1/econsim.git"
+  },
+  "keywords": [
+    "simulation",
+    "economics",
+    "agent-based-model",
+    "globe",
+    "three.js",
+    "trade",
+    "scenarios"
+  ],
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node scripts/test.mjs",
     "dev": "vite",
     "build": "vite build",
     "data": "python3 scripts/fetch_data.py",
@@ -16,10 +30,6 @@
     "markets": "python3 scripts/fetch_markets.py",
     "sim": "node scripts/headless.mjs"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "module",
   "dependencies": {
     "d3-geo": "^3.1.2",
     "three": "^0.187.0",
@@ -27,5 +37,6 @@
   },
   "devDependencies": {
     "vite": "^8.3.6"
-  }
+  },
+  "author": ""
 }

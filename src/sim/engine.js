@@ -27,7 +27,8 @@ export class Sim {
     this.R = Float32Array.from(W.base);        // динамические отношения
     this.aid = new Float32Array(N * N);        // «память» о помощи, затухает
     this.wars = []; this.truce = new Map();
-    this.lockedSan = new Set(); this.lockedT = new Set();
+    // пошлины/санкции, заданные сценариями: k -> { base, claims: Map(scId -> значение) }; пока есть claims, агенты их не трогают
+    this.lockedSan = new Map(); this.lockedT = new Map();
     this.events = []; this.eventSeq = 0;
     this.scenarios = []; this.scSeq = 0;
     this.wh = { gdp: [], g: [], infl: [], oil: [], wars: [], stab: [], unemp: [] };
@@ -113,14 +114,12 @@ export class Sim {
       if (e.kind === 'tariff') {
         for (const a of this.targets(e, 'from')) for (const b of this.targets(e, 'to')) {
           if (a === b) continue;
-          const k = a * N + b; sc.saved.push(['T', k, this.T[k]]);
-          this.T[k] = Math.max(this.T[k], e.value); this.lockedT.add(k);
+          this.claim(this.lockedT, this.T, a * N + b, sc.id, e.value);
         }
       } else if (e.kind === 'sanction') {
         for (const a of this.targets(e, 'from')) for (const b of this.targets(e, 'to')) {
           if (a === b) continue;
-          const k = a * N + b; sc.saved.push(['S', k, this.San[k]]);
-          this.San[k] = 1; this.lockedSan.add(k);
+          this.claim(this.lockedSan, this.San, a * N + b, sc.id, 1);
         }
       } else if (e.kind === 'war') {
         const A = this.targets(e, 'a'), B = this.targets(e, 'b');
@@ -136,18 +135,35 @@ export class Sim {
   endScenario(sc) {
     sc.ended = true;
     for (const rec of sc.saved) {
-      if (rec[0] === 'T') { this.T[rec[1]] = rec[2]; this.lockedT.delete(rec[1]); }
-      else if (rec[0] === 'S') { this.San[rec[1]] = rec[2]; this.lockedSan.delete(rec[1]); }
-      else if (rec[0] === 'W') { const w = this.wars.find(x => x.id === rec[1]); if (w) this.endWar(w, 'сценарий завершён'); }
+      if (rec[0] === 'W') { const w = this.wars.find(x => x.id === rec[1]); if (w) this.endWar(w, 'сценарий завершён'); }
     }
+    this.release(this.lockedT, this.T, sc.id);
+    this.release(this.lockedSan, this.San, sc.id);
     this.log('scenario', `■ Сценарий завершён: ${sc.title}`, [], 2);
+  }
+  // несколько сценариев могут задавать одну и ту же пошлину/санкцию: действует максимум из активных,
+  // исходное значение возвращается, только когда закончился последний
+  claim(locks, arr, k, id, v) {
+    let L = locks.get(k);
+    if (!L) locks.set(k, L = { base: arr[k], claims: new Map() });
+    L.claims.set(id, v);
+    arr[k] = Math.max(L.base, ...L.claims.values());
+  }
+  release(locks, arr, id) {
+    for (const [k, L] of locks) {
+      if (!L.claims.delete(id)) continue;
+      if (L.claims.size) arr[k] = Math.max(L.base, ...L.claims.values());
+      else { arr[k] = L.base; locks.delete(k); }
+    }
   }
 
   applyScenarios() {
     for (const s of this.S) s.mods = this.blankMods(), s.pulse = 0;
     this.oilShock = 0;
     for (const sc of this.scenarios) {
-      const t0 = sc.start, dur = Math.max(sc.duration, 1), t1 = t0 + dur;
+      // duration 0 = бессрочно: шоки действуют до отмены, разовые величины (level/pop/debt) применяются за 1 месяц
+      const t0 = sc.start, dur = Math.max(sc.duration, 1), t1 = sc.duration > 0 ? t0 + dur : Infinity;
+      const once = sc.duration > 0 ? dur : 1, onceActive = this.t < t0 + once;
       if (this.t >= t0 && !sc.started) this.startScenario(sc);
       if (this.t >= t0 && this.t < t1) {
         for (const e of sc.effects) {
@@ -167,9 +183,9 @@ export class Sim {
               case 'sent': s.mods.sent += v; break;
               case 'mil': s.mods.mil += v; break;
               case 'fiscal': s.mods.f += v; break;
-              case 'level': s.pulse += v / dur; break;                       // % ВВП за весь срок
-              case 'pop': s.pop *= 1 + v / dur / 100; break;
-              case 'debt': s.debt += v / dur; break;
+              case 'level': if (onceActive) s.pulse += v / once; break;       // % ВВП за весь срок
+              case 'pop': if (onceActive) s.pop *= 1 + v / once / 100; break;
+              case 'debt': if (onceActive) s.debt += v / once; break;
             }
           }
         }
@@ -212,14 +228,14 @@ export class Sim {
       if (inWar.has(k) || W.allies[atk].has(k) || W.countries[k].blocs.some(b => DEFENSE_BLOCS.includes(b) && W.countries[atk].blocs.includes(b))) continue;
       const bilateral = W.allies[vic].has(k);
       const p = (bilateral ? 0.55 : 0.4) + 0.3 * this.R[k * N + vic] - 0.3 * this.R[k * N + atk];
-      if (this.rnd(k, 92 + w.id % 7) < p * (0.4 + 0.6 * this.S[k].hawk + 0.3 * (this.S[k].mil > 1.5 ? 1 : 0))) {
+      if (this.rnd(k, 200 + w.id % 97) < p * (0.4 + 0.6 * this.S[k].hawk + 0.3 * (this.S[k].mil > 1.5 ? 1 : 0))) {
         w.b.push(k); inWar.add(k);
         this.log('join', `🛡 ${this.nm(k)} вступает в войну на стороне: ${this.nm(vic)}`, [k, vic], 4);
       }
     }
     for (const k of W.allies[atk]) {
       if (inWar.has(k)) continue;
-      if (this.rnd(k, 99 + w.id % 5) < 0.3 + 0.2 * this.S[k].hawk) {
+      if (this.rnd(k, 300 + w.id % 97) < 0.3 + 0.2 * this.S[k].hawk) {
         w.a.push(k); inWar.add(k);
         this.log('join', `🛡 ${this.nm(k)} вступает в войну на стороне: ${this.nm(atk)}`, [k, atk], 4);
       }
@@ -265,7 +281,7 @@ export class Sim {
       const nuc = w.a.some(i => this.world.countries[i].nuclear) && w.b.some(i => this.world.countries[i].nuclear);
       const p = 0.012 + 0.0007 * dur + (weak ? 0.05 : 0) + (lopsided ? 0.04 : 0) + (nuc ? 0.05 : 0);
       if (w.forcedEnd != null) { if (this.t >= w.forcedEnd) this.endWar(w, 'срок истёк'); }
-      else if (this.rnd(w.primaryA, 93 + w.id % 11) < p) this.endWar(w, lopsided ? 'победа одной стороны' : 'истощение сторон');
+      else if (this.rnd(w.primaryA, 400 + w.id % 97) < p) this.endWar(w, lopsided ? 'победа одной стороны' : 'истощение сторон');
     }
   }
 

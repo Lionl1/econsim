@@ -48,7 +48,8 @@ def download():
     raw = json.loads(RAW.read_text()) if RAW.exists() else {"code2iso": {}, "flows": {}}
     raw["code2iso"] = {str(k): v for k, v in code2iso.items()}
     # resume: anything not downloaded yet, plus empty answers (they may have been refused earlier)
-    todo = [(c["iso3"], f) for c in countries if c["iso3"] in iso2rep for f in ("M", "X")
+    # largest economies first, so a rate limit hits the small ones
+    todo = [(c["iso3"], f) for c in sorted(countries, key=lambda c: -(c.get("gdp") or 0)) if c["iso3"] in iso2rep for f in ("M", "X")
             if not raw["flows"].get(f"{c['iso3']}:{f}", {}).get("rows")]
     print(f"to download: {len(todo)}", flush=True)
     for n, (iso, f) in enumerate(todo):

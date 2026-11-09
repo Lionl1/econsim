@@ -3,7 +3,7 @@ import { buildWorld } from './sim/world.js';
 import { Sim } from './sim/engine.js';
 import { Globe } from './ui/globe.js';
 import { METRICS, METRIC_GROUPS, colorOf, gradientCss, fmtMoney } from './ui/colors.js';
-import { buildTargets } from './ui/targets.js';
+import { buildTargets, esc } from './ui/targets.js';
 import { initLeft } from './ui/leftPanel.js';
 import { RightPanel } from './ui/rightPanel.js';
 
@@ -43,11 +43,11 @@ async function boot() {
     onClick: id => app.select(id),
   });
 
-  app.select = (i, fly = false) => {
+  app.select = i => {
     app.selected = i;
     app.globe.setSelected(i);
     app.right.show(i);
-    if (i >= 0 && (fly || true)) app.globe.flyTo(i);
+    if (i >= 0) app.globe.flyTo(i);
     app.overlaySig = null; app.refreshOverlay();
   };
 
@@ -139,7 +139,7 @@ async function boot() {
     const list = ev.filter(e => app.feedMinor || e.sev >= 2).slice(-80).reverse();
     $('#feed-list').innerHTML = list.length ? list.map(e => {
       const m = MONTHS[e.t % 12] + ' ' + (app.sim.startYear + Math.floor(e.t / 12));
-      return `<div class="ev s${e.sev}" data-i="${e.ids[0] ?? -1}"><span class="et">${m}</span><span>${e.text}</span></div>`;
+      return `<div class="ev s${e.sev}" data-i="${e.ids[0] ?? -1}"><span class="et">${m}</span><span>${esc(e.text)}</span></div>`;
     }).join('') : '<div class="hint" style="padding:8px 0">Событий пока нет. Нажмите «Пуск» или запустите сценарий.</div>';
     document.querySelectorAll('#feed-list .ev').forEach(el => el.onclick = () => { const i = +el.dataset.i; if (i >= 0) app.select(i, true); });
   }

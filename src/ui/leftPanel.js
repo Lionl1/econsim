@@ -1,8 +1,7 @@
 // Левая панель: готовые сценарии, конструктор, источники данных.
 import { PRESETS, SHOCK_VARS } from '../sim/scenarios.js';
-import { targetSelectHtml, describeEffect } from './targets.js';
+import { targetSelectHtml, describeEffect, esc } from './targets.js';
 import { parseEvent } from '../sim/nlp.js';
-import { fmtMoney } from './colors.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 
@@ -37,7 +36,7 @@ function initScenarios(app) {
     box.innerHTML = sim.scenarios.map(sc => {
       const el = sim.t - sc.start, pr = sc.duration ? Math.min(100, Math.max(0, el / sc.duration * 100)) : (sc.started ? 100 : 0);
       const st = !sc.started ? `старт через ${sc.start - sim.t} мес.` : sc.ended ? 'завершён' : sc.duration ? `идёт, ${Math.max(0, sc.duration - el)} мес. осталось` : 'бессрочно';
-      return `<div class="card"><div class="row"><div class="t">${sc.title}</div><button class="small danger" data-rm="${sc.id}" title="Отменить и откатить">✕</button></div>
+      return `<div class="card"><div class="row"><div class="t">${esc(sc.title)}</div><button class="small danger" data-rm="${sc.id}" title="Отменить и откатить">✕</button></div>
         <div class="d">${st}</div>${sc.effects.slice(0, 4).map(e => `<div class="hint">• ${describeEffect(T, e)}</div>`).join('')}
         <div class="bar"><i style="width:${pr}%"></i></div></div>`;
     }).join('');
@@ -53,7 +52,7 @@ function initBuilder(app) {
     <h3>Параметры</h3>
     <div class="form">
       <div><label>Название</label><input id="b-title" value="${draft.title}"></div>
-      <div class="r2"><div><label>Длительность (мес., 0 = бессрочно/разово)</label><input id="b-dur" type="number" min="0" max="240" value="12"></div>
+      <div class="r2"><div><label>Длительность (мес., 0 = бессрочно)</label><input id="b-dur" type="number" min="0" max="240" value="12"></div>
       <div><label>Старт через (мес.)</label><input id="b-start" type="number" min="0" max="120" value="0"></div></div>
     </div>
     <h3>Добавить эффект</h3>
@@ -155,7 +154,6 @@ function initPrompt(app) {
   $('#p-ex').innerHTML = EXAMPLES.map(x => `<button class="small chip" style="margin:0 4px 4px 0">${x}</button>`).join('');
   root.querySelectorAll('#p-ex .chip').forEach(b => b.onclick = () => { $('#p-text').value = b.textContent; doParse(); });
   const lab = sel => T.label(sel);
-  const esc = s => String(s).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]);
   const doParse = () => {
     const txt = $('#p-text').value.trim(); if (!txt) return null;
     parsed = parseEvent(txt, app.world, lab); parsed.text = txt;

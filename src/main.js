@@ -7,6 +7,7 @@ import { buildTargets, esc } from './ui/targets.js';
 import { initLeft } from './ui/leftPanel.js';
 import { RightPanel } from './ui/rightPanel.js';
 import { initEnsemble } from './ui/ensemble.js';
+import { CALENDAR, monthOf } from './sim/calendar.js';
 
 const $ = s => document.querySelector(s);
 const MONTHS = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
@@ -23,15 +24,51 @@ function spark(data, baseData, color) {
 }
 
 async function boot() {
-  const [raw, topo, trade, markets] = await Promise.all([
-    getJson('/data/countries.json'), getJson('/data/world-50m.json'), getJson('/data/trade.json'), getJson('/data/markets.json'),
+  const [raw, topo, trade, markets, history] = await Promise.all([
+    getJson('/data/countries.json'), getJson('/data/world-50m.json'), getJson('/data/trade.json'), getJson('/data/markets.json'), getJson('/data/history.json'),
   ]);
-  const world = buildWorld(raw, { trade, markets });
-  const app = window.app = { world, raw, trade, markets, T: buildTargets(world), metric: 'g', running: false, speed: 1, selected: -1, seed: 1 + Math.floor(Math.random() * 1e6), feedMinor: false };
+  let world = buildWorld(raw, { trade, markets });
+  const app = window.app = { world, raw, trade, markets, history, cal: null, swapped: false, T: buildTargets(world), metric: 'g', running: false, speed: 1, selected: -1, seed: 1 + Math.floor(Math.random() * 1e6), feedMinor: false };
 
+  // calendar mode: "as it was" gets every event after the start year, the comparison world lacks the removed ones
   app.newSims = () => {
     app.sim = new Sim(world, { seed: app.seed });
     app.base = new Sim(world, { seed: app.seed });
+    app.swapped = false;
+    if (app.cal) for (const ev of CALENDAR) {
+      const start = monthOf(ev, app.cal.startYear);
+      if (start < 0) continue;
+      const def = { title: `${ev.icon} ${ev.title}`, desc: ev.desc, duration: ev.duration, start, effects: ev.effects };
+      app.sim.addScenario(def);
+      if (!app.cal.removed.has(ev.id)) app.base.addScenario(def);
+    }
+  };
+  // rebuild the world for another start year (2026 = today, earlier = actual state of that year)
+  app.setStartYear = (startYear, cal = null) => {
+    world = app.world = buildWorld(raw, { trade, markets, history, startYear });
+    app.cal = cal; app.T = buildTargets(world); app.globe.world = world;
+    app.seed = 1 + Math.floor(Math.random() * 1e6);
+    app.newSims(); app.overlaySig = null; app.lastFeedId = -1; app.selected = -1; app.globe.setSelected(-1);
+    app.right.show(-1); app.refreshActive(); app.refreshMode(); app.refreshAll(true);
+  };
+  // actual World Bank annual values stretched to the monthly history (NaN where unknown) for chart overlays
+  app.actual = (len, iso, key) => {
+    if (!app.cal || !history) return null;
+    const src = iso ? history[iso]?.[key] : history._WLD?.[key];
+    if (!src) return null;
+    return Array.from({ length: len }, (_, k) => { const v = src[app.sim.startYear + Math.floor(Math.max(0, k - 1) / 12)]; return v == null ? NaN : v; });
+  };
+  // show the comparison world on the globe instead (deltas flip sign)
+  app.swapWorlds = () => { [app.sim, app.base] = [app.base, app.sim]; app.swapped = !app.swapped; app.overlaySig = null; app.lastFeedId = -1; app.refreshMode(); app.refreshAll(true); };
+  app.refreshMode = () => {
+    const chip = $('#mode-chip');
+    if (!app.cal) { chip.innerHTML = ''; return; }
+    const n = app.cal.removed.size;
+    chip.innerHTML = `🗓 История с ${app.cal.startYear} · на глобусе: <b>${app.swapped ? 'без событий' : 'как было'}</b>`
+      + `<span style="color:var(--mute)"> · сравнение: ${app.swapped ? 'как было' : n ? `без ${n} событ${n === 1 ? 'ия' : 'ий'}` : 'то же самое'}</span>`
+      + '<button id="mc-swap" title="Поменять миры местами">⇄</button><button id="mc-exit" title="Вернуться в сегодняшний мир">✕</button>';
+    $('#mc-swap').onclick = app.swapWorlds;
+    $('#mc-exit').onclick = () => { app.setStartYear(2026, null); app.toast('Вернулись в сегодняшний мир'); };
   };
   app.newSims();
 
@@ -75,6 +112,7 @@ async function boot() {
   initEnsemble(app);
   app.refreshActive();
   app.right.show(-1);
+  app.refreshMode();
 
   // ---------- map metric ----------
   const mapkey = $('#mapkey');
@@ -194,7 +232,7 @@ async function boot() {
     const now = performance.now();
     if (force || now - lastMap > 250) { refreshMap(); lastMap = now; }
     if (force || now - lastUi > 250) { refreshHud(); refreshFeed(); app.right.update(); refreshOverlay(); lastUi = now; }
-    if (force || now - lastSlow > 800) { app.refreshActive(); app.refreshImpact?.(); app.refreshMarkets?.(); lastSlow = now; }
+    if (force || now - lastSlow > 800) { app.refreshActive(); app.refreshImpact?.(); app.refreshMarkets?.(); app.refreshCalendar?.(); lastSlow = now; }
   }
   app.refreshAll = refreshAll;
 

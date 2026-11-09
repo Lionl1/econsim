@@ -29,7 +29,8 @@ export function lineChart(canvas, series, { height = 90, zeroLine = false, fmt =
   for (const s of series) {
     ctx.strokeStyle = s.color; ctx.lineWidth = s.width || 1.6; ctx.setLineDash(s.dash || []);
     ctx.beginPath();
-    s.data.forEach((v, i) => { const x = X(i, s.data.length), y = Y(v); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+    let pen = false;                                   // NaN = gap (e.g. years without actual data)
+    s.data.forEach((v, i) => { if (!Number.isFinite(v)) { pen = false; return; } const x = X(i, s.data.length), y = Y(v); pen ? ctx.lineTo(x, y) : ctx.moveTo(x, y); pen = true; });
     ctx.stroke();
   }
   ctx.setLineDash([]);

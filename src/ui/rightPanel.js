@@ -154,7 +154,9 @@ export class RightPanel {
       ].join('');
       const idx = h => h.map(v => v / h[0] * 100);
       lineChart($('#w-c1'), [{ data: idx(base.wh.gdp), color: '#5f6d87', label: 'база', dash: [4, 3] }, { data: idx(sim.wh.gdp), color: '#5b9cff', label: 'сценарий', width: 2 }], { fmt: v => v.toFixed(0) });
-      lineChart($('#w-c2'), [{ data: sim.wh.g, color: '#2fd3a7', label: 'рост' }, { data: sim.wh.infl, color: '#ffb547', label: 'инфляция' }], { zeroLine: true, fmt: v => v.toFixed(1) });
+      const fg = this.app.actual(sim.wh.g.length, null, 'growth'), fi = this.app.actual(sim.wh.infl.length, null, 'infl');
+      lineChart($('#w-c2'), [{ data: sim.wh.g, color: '#2fd3a7', label: 'рост' }, { data: sim.wh.infl, color: '#ffb547', label: 'инфляция' },
+        ...(fg ? [{ data: fg, color: '#ffffff', label: 'факт рост', width: 2, dash: [2, 2] }, { data: fi, color: '#ffd9a0', label: 'факт инфл.', width: 1.5, dash: [2, 2] }] : [])], { zeroLine: true, fmt: v => v.toFixed(1) });
       lineChart($('#w-c3'), [{ data: sim.wh.oil, color: '#c792ea', label: 'нефть' }, { data: sim.wh.wars.map(w => 1 + w * 0.1), color: '#ff5c6c', label: 'войны ×0.1' }], { fmt: v => v.toFixed(2) });
       const f = world.worldForecast || {};
       $('#w-imf').innerHTML = `<div class="stats s3">${Object.entries(f).slice(0, 6).map(([y, v]) => stat(y, v.toFixed(1) + '%')).join('')}</div>
@@ -223,7 +225,9 @@ export class RightPanel {
         stat('Фискальный курс', (s.f > 0 ? '+' : '') + s.f.toFixed(1) + '% ВВП', ''),
         stat('Армия, % ВВП', s.mil.toFixed(1) + '%', delta(s.mil - b.mil, 1, false)),
       ].join('');
-      lineChart($('#c-ch2'), [{ data: s.hist.g, color: '#2fd3a7', label: 'рост' }, { data: s.hist.infl, color: '#ffb547', label: 'инфляция' }], { zeroLine: true, fmt: v => v.toFixed(1) });
+      const fg = this.app.actual(s.hist.g.length, c.iso3, 'growth'), fi = this.app.actual(s.hist.infl.length, c.iso3, 'infl');
+      lineChart($('#c-ch2'), [{ data: s.hist.g, color: '#2fd3a7', label: 'рост' }, { data: s.hist.infl, color: '#ffb547', label: 'инфляция' },
+        ...(fg ? [{ data: fg, color: '#ffffff', label: 'факт рост', width: 2, dash: [2, 2] }, { data: fi, color: '#ffd9a0', label: 'факт инфл.', width: 1.5, dash: [2, 2] }] : [])], { zeroLine: true, fmt: v => v.toFixed(1) });
       lineChart($('#c-ch3'), [{ data: s.hist.unemp, color: '#ff5c6c', label: 'безработица' }, { data: s.hist.stab.map(v => v * 20), color: '#9ad1ff', label: 'стабильность×20' }], { fmt: v => v.toFixed(1) });
       const f = c.forecast;
       $('#c-imf').innerHTML = f?.growth ? `<table class="tbl"><tr><th>Год</th><th class="n">Рост</th><th class="n">Инфляция</th><th class="n">Безраб.</th></tr>${Object.keys(f.growth).map(y => `<tr><td>${y}</td><td class="n">${f.growth[y]?.toFixed(1) ?? '—'}%</td><td class="n">${f.infl?.[y]?.toFixed(1) ?? '—'}%</td><td class="n">${f.unemp?.[y]?.toFixed(1) ?? '—'}</td></tr>`).join('')}</table>` : '<div class="hint">Нет прогноза IMF — траектория по формуле модели.</div>';

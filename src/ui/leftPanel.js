@@ -3,6 +3,7 @@ import { PRESETS, SHOCK_VARS } from '../sim/scenarios.js';
 import { targetSelectHtml, describeEffect, esc } from './targets.js';
 import { parseEvent } from '../sim/nlp.js';
 import { initMarkets } from './marketsPanel.js';
+import { initCalendar } from './calendarPanel.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 
@@ -15,12 +16,13 @@ export function initLeft(app) {
     $('#left-title').textContent = b.querySelector('span:last-child').textContent;
     document.body.classList.remove('left-collapsed');
     if (tab === 'mkt') app.refreshMarkets?.(true);
+    if (tab === 'cal') app.refreshCalendar?.(true);
   };
   // clicking the active icon again collapses the panel
   rail.forEach(b => b.onclick = () => b.classList.contains('on') && !document.body.classList.contains('left-collapsed')
     ? document.body.classList.add('left-collapsed') : app.openTab(b.dataset.tab));
   $('#left-close').onclick = () => document.body.classList.add('left-collapsed');
-  initScenarios(app); initBuilder(app); initPrompt(app); initMarkets(app); initSources(app);
+  initScenarios(app); initBuilder(app); initPrompt(app); initCalendar(app); initMarkets(app); initSources(app);
 }
 
 // ---------- "Scenarios" tab ----------

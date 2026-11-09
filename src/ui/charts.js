@@ -6,7 +6,7 @@ export function lineChart(canvas, series, { height = 90, zeroLine = false, fmt =
   const ctx = canvas.getContext('2d');
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, w, h);
-  const all = series.flatMap(s => s.data).filter(Number.isFinite);
+  const all = series.flatMap(s => [...s.data, ...(s.lo || []), ...(s.hi || [])]).filter(Number.isFinite);
   if (all.length < 2) return;
   let min = Math.min(...all), max = Math.max(...all);
   if (zeroLine) { min = Math.min(min, 0); max = Math.max(max, 0); }
@@ -18,6 +18,14 @@ export function lineChart(canvas, series, { height = 90, zeroLine = false, fmt =
   ctx.strokeStyle = 'rgba(255,255,255,.08)'; ctx.lineWidth = 1;
   for (let k = 0; k <= 2; k++) { const y = T + (h - T - B) * k / 2; ctx.beginPath(); ctx.moveTo(L, y); ctx.lineTo(w - R, y); ctx.stroke(); }
   if (zeroLine && min < 0 && max > 0) { ctx.strokeStyle = 'rgba(255,255,255,.3)'; ctx.beginPath(); ctx.moveTo(L, Y(0)); ctx.lineTo(w - R, Y(0)); ctx.stroke(); }
+  // коридор (s.lo/s.hi) рисуется полупрозрачной заливкой под линией
+  for (const s of series) if (s.lo && s.hi) {
+    const n = s.lo.length;
+    ctx.fillStyle = s.bandColor || s.color; ctx.globalAlpha = 0.22; ctx.beginPath();
+    s.hi.forEach((v, i) => { const x = X(i, n), y = Y(v); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+    for (let i = n - 1; i >= 0; i--) ctx.lineTo(X(i, n), Y(s.lo[i]));
+    ctx.closePath(); ctx.fill(); ctx.globalAlpha = 1;
+  }
   for (const s of series) {
     ctx.strokeStyle = s.color; ctx.lineWidth = s.width || 1.6; ctx.setLineDash(s.dash || []);
     ctx.beginPath();

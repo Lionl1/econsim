@@ -92,3 +92,13 @@ canvas.chart { width: 100%; display: block; margin: 4px 0; }
 #toast.on { opacity: 1; }
 a { color: var(--acc); }
 @media (max-width: 1100px) { #right { width: 300px; } #feed { right: 324px; } }
+
+/* окно ансамбля */
+#ens { position: fixed; inset: 0; z-index: 25; display: none; align-items: center; justify-content: center; background: rgba(3,6,12,.55); }
+#ens.on { display: flex; }
+#ens .ens-card { position: relative; width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 80px); overflow: auto; padding: 14px 16px; }
+#ens .ens-card > .row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+#ens .card .row { display: flex; justify-content: space-between; gap: 10px; padding: 2px 0; }
+#ens canvas { width: 100%; display: block; }
+#ens .ens-opts { margin: 8px 0; }
+#ens .eff { display: flex; justify-content: space-between; gap: 8px; }

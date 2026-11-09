@@ -6,6 +6,7 @@ import { METRICS, METRIC_GROUPS, colorOf, gradientCss, fmtMoney } from './ui/col
 import { buildTargets, esc } from './ui/targets.js';
 import { initLeft } from './ui/leftPanel.js';
 import { RightPanel } from './ui/rightPanel.js';
+import { initEnsemble } from './ui/ensemble.js';
 
 const $ = s => document.querySelector(s);
 const MONTHS = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
@@ -16,7 +17,7 @@ async function boot() {
     fetch('/data/world-50m.json').then(r => r.json()),
   ]);
   const world = buildWorld(raw);
-  const app = window.app = { world, T: buildTargets(world), metric: 'g', running: false, speed: 1, selected: -1, seed: 1, feedMinor: false };
+  const app = window.app = { world, raw, T: buildTargets(world), metric: 'g', running: false, speed: 1, selected: -1, seed: 1, feedMinor: false };
 
   app.newSims = () => {
     app.sim = new Sim(world, { seed: app.seed });
@@ -60,6 +61,7 @@ async function boot() {
   // ---------- панели ----------
   app.right = new RightPanel(app);
   initLeft(app);
+  initEnsemble(app);
   app.refreshActive();
   app.right.show(-1);
 

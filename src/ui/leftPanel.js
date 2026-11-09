@@ -25,10 +25,14 @@ function initScenarios(app) {
     <div id="sc-presets"></div>`;
   $('#sc-presets').innerHTML = PRESETS.map(p => `
     <div class="card"><div class="t">${p.icon} ${p.title}</div><div class="d">${p.desc}</div>
-      <div class="row"><span class="hint">${p.duration ? p.duration + ' мес.' : 'до развязки'}</span><button class="primary small" data-run="${p.id}">▶ Запустить</button></div></div>`).join('');
+      <div class="row"><span class="hint">${p.duration ? p.duration + ' мес.' : 'до развязки'}</span><span><button class="small" data-eval="${p.id}" title="Оценить на 20 прогонах: медиана и разброс эффекта">📊 Оценить</button> <button class="primary small" data-run="${p.id}">▶ Запустить</button></span></div></div>`).join('');
   root.querySelectorAll('[data-run]').forEach(b => b.onclick = () => {
     const p = PRESETS.find(x => x.id === b.dataset.run);
     app.launch({ ...p }, +$('#sc-delay').value || 0);
+  });
+  root.querySelectorAll('[data-eval]').forEach(b => b.onclick = () => {
+    const p = PRESETS.find(x => x.id === b.dataset.eval);
+    app.evaluate({ title: p.title, scenarios: [{ def: { ...p }, delay: +$('#sc-delay').value || 0 }] });
   });
   app.refreshActive = () => {
     const box = $('#sc-active'), sim = app.sim;
@@ -65,7 +69,7 @@ function initBuilder(app) {
       <button id="b-add">＋ Добавить в сценарий</button>
     </div>
     <h3>Эффекты сценария</h3><div id="b-list"></div>
-    <div class="form" style="margin-top:10px"><button class="primary" id="b-run">▶ Запустить сценарий</button>
+    <div class="form" style="margin-top:10px"><div class="r2"><button id="b-eval">📊 Оценить</button><button class="primary" id="b-run">▶ Запустить</button></div>
       <div class="r2"><button id="b-copy">Копировать JSON</button><button id="b-load">Загрузить JSON</button></div>
       <textarea id="b-json" rows="4" placeholder="JSON сценария (для импорта вставьте и нажмите «Загрузить JSON»)" style="display:none"></textarea></div>`;
 
@@ -112,6 +116,11 @@ function initBuilder(app) {
   $('#b-run').onclick = () => {
     if (!draft.effects.length) return app.toast('Добавьте эффекты');
     app.launch({ title: v('b-title') || 'Мой сценарий', duration: Math.max(0, +v('b-dur') || 0), effects: draft.effects.map(e => ({ ...e })) }, +v('b-start') || 0);
+  };
+  $('#b-eval').onclick = () => {
+    if (!draft.effects.length) return app.toast('Добавьте эффекты');
+    const def = { title: v('b-title') || 'Мой сценарий', duration: Math.max(0, +v('b-dur') || 0), effects: draft.effects.map(e => ({ ...e })) };
+    app.evaluate({ title: def.title, scenarios: [{ def, delay: +v('b-start') || 0 }] });
   };
   $('#b-copy').onclick = () => {
     const json = JSON.stringify({ title: v('b-title'), duration: +v('b-dur'), effects: draft.effects }, null, 1);
@@ -168,8 +177,9 @@ function initPrompt(app) {
         <div><label>Старт через, мес.</label><input data-delay="${k}" type="number" min="0" max="120" value="${p.delay}"></div></div>
         <button class="small" data-edit="${k}">Править в конструкторе</button></div></div>`).join('')
       + parsed.notes.map(n => `<div class="hint" style="color:var(--warn,#f5a524)">⚠ ${esc(n)}</div>`).join('')
-      + `<button class="primary" id="p-go" style="width:100%;margin-bottom:8px">▶ Запустить${parsed.parts.length > 1 ? ` все (${parsed.parts.length})` : ''}</button>`;
+      + `<div class="r2" style="margin-bottom:8px"><button id="p-eval" title="Сценарий против базового мира на 20 прогонах">📊 Оценить</button><button class="primary" id="p-go">▶ Запустить${parsed.parts.length > 1 ? ` все (${parsed.parts.length})` : ''}</button></div>`;
     $('#p-go').onclick = go;
+    $('#p-eval').onclick = () => app.evaluate({ title: parsed.parts.map(p => p.title).join(' + '), scenarios: parsed.parts.map((_, k) => ({ def: partDef(k), delay: partDelay(k) })) });
     root.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => { const k = +b.dataset.edit; app.loadDraft({ ...partDef(k), delay: partDelay(k) }); });
     return parsed;
   };

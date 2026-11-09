@@ -16,8 +16,9 @@ import { P } from './params.js';
 export { P };
 
 export class Sim {
-  constructor(world, { seed = 1 } = {}) {
-    this.world = world; this.seed = seed;
+  // noise: scale of the random macro/market shocks (1 = calibrated, 0 = the expected path; agent decisions stay random)
+  constructor(world, { seed = 1, noise = 1 } = {}) {
+    this.world = world; this.seed = seed; this.noise = noise;
     this.reset();
   }
 
@@ -54,7 +55,9 @@ export class Sim {
     const i = c.i;
     const gpot = c.trend ?? clamp(0.4 * c.growth + 0.6 * (4.6 - 0.36 * Math.log(Math.max(c.gdpPc, 300) / 1000)), -0.5, 7);
     const infl = clamp(c.infl, -2, 60);
-    const anchor = c.inflTrend != null ? clamp(c.inflTrend, 1, 25) : clamp(infl * P.anchorK, 1.5, 18);
+    // inflation anchor: historical start → pre-start median; today → the IMF forecast for the first year; else from current inflation
+    const fcI = c.forecast?.infl?.[this.world.startYear ?? 2026];
+    const anchor = c.inflTrend != null ? clamp(c.inflTrend, 1, 25) : fcI != null && fcI < 80 ? clamp(fcI, 0.5, 60) : clamp(infl * P.anchorK, 1.5, 18);
     const debt = clamp(c.debt, 3, 300);
     const stab0 = clamp(0.52 + 0.2 * c.wgiPV + 0.05 * c.wgiGE, 0.08, 0.97);
     const rrN = clamp(0.5 + 0.5 * gpot, 0.5, 4);                  // neutral real rate
@@ -63,7 +66,7 @@ export class Sim {
     const hawk = clamp(0.2 + 0.05 * c.mil + 0.3 * (1 - c.dem) + 0.25 * (hash(this.seed, i, 7777, 1) - 0.5) + (c.nuclear ? 0.05 : 0), 0.02, 0.98);
     const s = {
       i, gdp: c.gdp, gdp0: c.gdp, pop: c.pop, pop0: c.pop, gpot, gc: clamp(c.growth, -4, 9), g: clamp(c.growth, -4, 9),
-      infl0: infl, infl, inflCore: infl, inflPL: 0, tarPL: 0, tarPLslow: 0, anchor, dLevel: 0, defaultT: 0, unemp0: unemp, unemp, uN: unemp,
+      infl0: infl, infl, inflCore: infl, inflPL: 0, headline: 0, tarPL: 0, tarPLslow: 0, anchor, dLevel: 0, defaultT: 0, unemp0: unemp, unemp, uN: unemp,
       debt, debt0: debt, deficit0: debt * (gpot + anchor) / 100,
       stab0, stab: stab0, sent: 0.5, sentBase: clamp(0.38 + 0.4 * stab0 + 0.06 * c.dem, 0.35, 0.85), protest: 0,
       misery0: Math.min(infl, 60) + unemp,
@@ -346,8 +349,8 @@ export class Sim {
     for (const s of S) { const c = W.countries[s.i]; wg += this.prevG[s.i] * s.gdp; wgpot += s.gpot * s.gdp; gw += s.gdp; oilTot += c.fuelExp / 100 * s.gdp; oilHit += c.fuelExp / 100 * s.gdp * (0.5 * Math.min(1, s.warCount) + 0.6 * s.sanctionPressure); }
     const gap = (wg - wgpot) / gw;
     const oilTarget = 1 + 0.12 * gap + this.oilShock + 1.2 * (oilHit / Math.max(1, oilTot));
-    this.oil = clamp(this.oil + 0.15 * (oilTarget - this.oil) + 0.012 * gauss(this.seed, 9999, t, 1), 0.3, 4.5);
-    this.cyc = P.cycPers * this.cyc + P.cycNoise * gauss(this.seed, 9998, t, 2);
+    this.oil = clamp(this.oil + 0.15 * (oilTarget - this.oil) + this.noise * 0.012 * gauss(this.seed, 9999, t, 1), 0.3, 4.5);
+    this.cyc = P.cycPers * this.cyc + this.noise * P.cycNoise * gauss(this.seed, 9998, t, 2);
     const p = this.oil;
 
     stepTrade(this);
@@ -362,13 +365,17 @@ export class Sim {
       if (fc) {
         const fy = Math.min(year, 2031);   // before 2026 there is no forecast: see the convergence rule below
         if (fc.growth?.[fy] != null) s.gpot = clamp(fc.growth[fy], -8, 12);
-        if (fc.infl?.[fy] != null) s.anchor += 0.05 * (clamp(fc.infl[fy], 0.5, 80) - s.anchor);
+        // the anchor follows the IMF inflation path a few months ahead (interpolated by month): the IMF path already
+        // contains the disinflation, so leading by about the core's own inertia makes realized inflation track it
+        const tau = year + (t % 12 + P.inflLead) / 12, y0 = Math.min(Math.floor(tau), 2031), y1 = Math.min(y0 + 1, 2031);
+        const fi0 = fc.infl?.[y0] ?? fc.infl?.[fy], fi1 = fc.infl?.[y1] ?? fi0;
+        if (fi0 != null) s.anchor += P.anchorTrack * (clamp(fi0 + (fi1 - fi0) * (tau - Math.floor(tau)), 0.5, 80) - s.anchor);
         if (fc.unemp?.[fy] != null) s.uN += 0.05 * (clamp(fc.unemp[fy], 0.5, 40) - s.uN);
       }
       // historical years: the inflation anchor drifts to modern targets over ~3 years (the 1995–2015 move to inflation targeting)
-      if (c.inflTrend != null && year < 2026) s.anchor += ((c.income === 'HIC' ? 2 : 3.5) - s.anchor) / 36;
+      if (c.inflTrend != null && year < 2026) s.anchor += ((c.income === 'HIC' ? P.targetHIC : P.targetEM) - s.anchor) / P.anchorDriftMonths;
       // historical years: pre-start trend minus beta-convergence (~2 pp per log point of income growth since the start)
-      if (c.trend != null && year < 2026 && t % 12 === 0) s.gpot = Math.max(-1, c.trend - 2 * Math.log((s.gdp / s.pop) / (s.gdp0 / s.pop0)));
+      if (c.trend != null && year < 2026 && t % 12 === 0) s.gpot = Math.max(-1, c.trend - P.convergence * Math.log((s.gdp / s.pop) / (s.gdp0 / s.pop0)));
       let foreignG = 0, foreignBase = 0, sanc = 0;
       for (const j of W.partners[i]) {
         const w = W.xs[i * N + j];                                   // partner demand weighted by the actual export structure
@@ -392,7 +399,7 @@ export class Sim {
       const milExtra = s.mil - s.mil0;
       const tight = s.r - (s.rrN + s.infl);   // real policy rate minus the neutral real rate (>0 = restrictive)
       const target = s.gpot + P.fiscalMult * fEff + equityGrowth(this, s) + 2 * s.crypto * clamp(this.btcMom || 0, -1, 1) + 0.1 * milExtra - 0.25 * tight + spill + oilEff + m.g + P.cycAmp * this.cyc * c.openness
-        + P.gNoise * (c.income === 'LIC' ? P.volLIC : c.income === 'HIC' ? P.volHIC : 1) * this.gs(i, 1);
+        + this.noise * P.gNoise * (c.income === 'LIC' ? P.volLIC : c.income === 'HIC' ? P.volHIC : 1) * this.gs(i, 1);
       s.gc += P.gAdj * (target - s.gc);
       s.g = s.gc + 12 * dLevel;
       newG[i] = s.g;
@@ -401,18 +408,22 @@ export class Sim {
 
       // inflation = core + one-off price-level shifts (tariffs, exchange rate) that stay in annual inflation for ~a year
       const oilInfl = P.oilInfl * (p - 1) * Math.max(e, 0);
-      const inflT = s.anchor + 0.25 * (s.gc - s.gpot) + 0.35 * fEff + oilInfl - 0.3 * tight + m.infl;
-      // noise is a separate AR(1) component, multiplicative around (core + 3): inflation is right-skewed in the data,
+      // energy/food and scenario price shocks hit headline inflation at once (share P.headlineShare);
+      // only the rest feeds core inflation (second-round effects) — fast peaks, fast fading
+      const priceShock = oilInfl + m.infl;
+      const inflT = s.anchor + 0.25 * (s.gc - s.gpot) + 0.35 * fEff + (1 - P.headlineShare) * priceShock - 0.3 * tight;
+      // noise is a separate AR(1) component, multiplicative around (core + inflShift): inflation is right-skewed in the data,
       // deep deflation is rare, and low-inflation countries swing less than high-inflation ones
       s.inflCore = clamp(s.inflCore + P.inflAdj * (inflT - s.inflCore), -2, 150);
-      s.inflN = (1 - P.inflAdj) * (s.inflN || 0) + P.inflNoise * this.gs(i, 2);
+      s.inflN = (1 - P.inflAdj) * (s.inflN || 0) + this.noise * P.inflNoise * this.gs(i, 2);
       // centered: exp(n - var/2) has mean 1, so the noise does not lift average inflation
-      const nVar = P.inflNoise ** 2 / (1 - (1 - P.inflAdj) ** 2);
-      const inflNoisy = (Math.max(s.inflCore, -2) + 3) * Math.exp(s.inflN - nVar / 2) - 3;
+      const nVar = (this.noise * P.inflNoise) ** 2 / (1 - (1 - P.inflAdj) ** 2);
+      const inflNoisy = (Math.max(s.inflCore, -2) + P.inflShift) * Math.exp(s.inflN - nVar / 2) - P.inflShift;
       s.tarPL += 0.15 * (P.tariffPass * c.imports * s.tauImp - s.tarPL);
       s.tarPLslow += (s.tarPL - s.tarPLslow) / 12;
       s.inflPL = (s.tarPL - s.tarPLslow) + (s.fxPL - s.fxPLslow);
-      s.infl = clamp(inflNoisy + s.inflPL, -3, 300);
+      s.headline += 0.3 * (P.headlineShare * priceShock - (s.headline || 0));
+      s.infl = clamp(inflNoisy + s.inflPL + s.headline, -3, 300);
       m.sent += 0.15 * s.crypto * clamp(this.btcMom || 0, -1.5, 1.5);
 
       // unemployment (Okun's law)

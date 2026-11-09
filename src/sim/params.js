@@ -4,6 +4,14 @@ export const P = {
   fiscalMult: 0.5,      // fiscal multiplier (Ramey 2019: 0.6–1; lower in EMs)
   // calibrated to World Bank series 2000–2024
   gNoise: 7.8, cycAmp: 0.6, cycNoise: 8, inflNoise: 0.16, gAdj: 0.5, inflAdj: 0.07, okun: 0.32, cycPers: 0.8, volLIC: 1.3, volHIC: 0.95, anchorK: 0.85, oilInfl: 10,
+  // inflation and the baseline path
+  inflShift: 3,         // inflation noise is multiplicative around (core + inflShift): right-skewed, deflation rare and shallow
+  anchorTrack: 0.25,    // monthly speed at which the inflation anchor follows the IMF path (interpolated by month)
+  headlineShare: 0.7,   // share of energy/food/scenario price shocks that hits headline CPI directly (the rest via core)
+  inflLead: 10,         // months the anchor leads the IMF path, offsetting the inertia of core inflation
+  convergence: 2,       // historical starts: pp of potential growth lost per log point of income growth (beta-convergence)
+  targetHIC: 2, targetEM: 3.5,   // historical starts: modern inflation targets the anchor drifts to
+  anchorDriftMonths: 36, // historical starts: time scale of that drift (the 1995–2015 move to inflation targeting)
   // trade
   tradeElast: 3,        // elasticity of substitution between suppliers (Head & Mayer 2014: 3–6; short-run ~1, Boehm et al. 2023)
   tradeAdj: 1 / 18,     // supply chain adjustment speed, 1/month

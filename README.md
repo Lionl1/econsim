@@ -2,6 +2,8 @@
 
 **English** · [Русский](README.ru.md)
 
+**▶ Live demo: <https://lionl1.github.io/econsim/>** — runs in the browser, nothing to install.
+
 EconSim runs a monthly simulation of the world economy on an interactive 3D globe: 197 countries, real bilateral trade, exchange rates, stock markets, crypto, politics and wars. Inside it, three kinds of agents make decisions:
 
 - **governments** set interest rates and budgets, retaliate against tariffs, impose sanctions, arm themselves, help allies and declare wars;

@@ -246,7 +246,7 @@ function initSources(app) {
     Базовый мир идёт параллельно с теми же случайными числами — разница показывает чистый эффект сценария. Кнопка «📊 Оценить» добавляет разброс по случайным событиям, параметрам модели и величине события.</p>
     <p class="hint">⚠ Учебная модель, а не прогноз. Волатильность роста, инфляции, курсов и индексов откалибрована по данным World Bank (<code>npm run calibrate</code>), пандемия и финкризис сверены с реальностью (<code>npm run backtest</code>). Коэффициенты торговли, курсов и рынков взяты из литературы (ссылки — в <code>src/sim/params.js</code>). Доля крипты по странам — прокси.</p>
     <h3>Источники данных</h3><div id="src-list"></div>`;
-  fetch('/data/sources.json').then(r => r.json()).then(list => {
+  fetch('data/sources.json').then(r => r.json()).then(list => {
     $('#src-list').innerHTML = list.map(s => `<div class="card"><div class="t">${s.used ? '✅' : '⬜'} <a href="${s.url}" target="_blank" rel="noopener">${s.name}</a></div><div class="d">${s.what}</div></div>`).join('');
   });
 }

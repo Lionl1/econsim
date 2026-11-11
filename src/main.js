@@ -25,7 +25,7 @@ function spark(data, baseData, color) {
 
 async function boot() {
   const [raw, topo, trade, markets, history] = await Promise.all([
-    getJson('/data/countries.json'), getJson('/data/world-50m.json'), getJson('/data/trade.json'), getJson('/data/markets.json'), getJson('/data/history.json'),
+    getJson('data/countries.json'), getJson('data/world-50m.json'), getJson('data/trade.json'), getJson('data/markets.json'), getJson('data/history.json'),
   ]);
   let world = buildWorld(raw, { trade, markets });
   const app = window.app = { world, raw, trade, markets, history, cal: null, swapped: false, noise: 1, T: buildTargets(world), metric: 'g', running: false, speed: 1, selected: -1, seed: 1 + Math.floor(Math.random() * 1e6), feedMinor: false };
